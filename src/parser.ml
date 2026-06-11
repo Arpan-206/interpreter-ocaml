@@ -21,7 +21,17 @@ let rec parse_primary p =
       | _ -> failwith "Expected ')' after expression")
   | _ -> failwith "Expected expression"
 
-and parse_expression p = parse_primary p
+and parse_unary p =
+  match current p with
+  | Lexer.BANG ->
+      let p', e = parse_unary (advance p) in
+      (p', Expr.Unary (Expr.Not, e))
+  | Lexer.MINUS ->
+      let p', e = parse_unary (advance p) in
+      (p', Expr.Unary (Expr.Negate, e))
+  | _ -> parse_primary p (* no unary op — fall through to primary *)
+
+and parse_expression p = parse_unary p
 
 let parse tokens =
   let _p', ast = parse_expression (make tokens) in
