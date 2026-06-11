@@ -11,7 +11,16 @@ and literal =
   | LitStr of string (* ← and this, you'll need it soon *)
 
 and unary_op = Negate | Not
-and binary_op = Add | Subtract | Multiply | Divide
+
+and binary_op =
+  | Add
+  | Subtract
+  | Multiply
+  | Divide
+  | GREATER
+  | GREATER_EQUAL
+  | LESS
+  | LESS_EQUAL
 
 let format_float f =
   if Float.is_integer f then Printf.sprintf "%.1f" f else string_of_float f
@@ -40,6 +49,10 @@ let rec print = function
         | Subtract -> "-"
         | Multiply -> "*"
         | Divide -> "/"
+        | GREATER -> ">"
+        | GREATER_EQUAL -> ">="
+        | LESS -> "<"
+        | LESS_EQUAL -> "<="
       in
       print_string "(";
       print_string sym;

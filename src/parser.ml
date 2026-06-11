@@ -62,7 +62,27 @@ and parse_term p =
   in
   loop p' left
 
-and parse_expression p = parse_term p
+and parse_comparison p =
+  let p', left = parse_term p in
+  let rec loop p left =
+    match current p with
+    | Lexer.GREATER ->
+        let p', r = parse_term (advance p) in
+        loop p' (Expr.Binary (left, Expr.GREATER, r))
+    | Lexer.GREATER_EQUAL ->
+        let p', r = parse_term (advance p) in
+        loop p' (Expr.Binary (left, Expr.GREATER_EQUAL, r))
+    | Lexer.LESS ->
+        let p', r = parse_term (advance p) in
+        loop p' (Expr.Binary (left, Expr.LESS, r))
+    | Lexer.LESS_EQUAL ->
+        let p', r = parse_term (advance p) in
+        loop p' (Expr.Binary (left, Expr.LESS_EQUAL, r))
+    | _ -> (p, left)
+  in
+  loop p' left
+
+and parse_expression p = parse_comparison p
 
 let parse tokens =
   let _p', ast = parse_expression (make tokens) in
