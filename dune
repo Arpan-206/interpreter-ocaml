@@ -2,5 +2,5 @@
 
 (executable
  (name main)
- (modules main lexer expr parser interpreter)
+ (modules main lexer expr parser stmt evaluator)
  (libraries unix))

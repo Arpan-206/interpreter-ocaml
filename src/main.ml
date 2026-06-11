@@ -19,9 +19,13 @@ let () =
   | "evaluate" ->
       let tokens = Lexer.tokenize file_contents in
       let ast = Parser.parse tokens in
-      let value = Interpreter.eval ast in
-      Interpreter.print_value value;
+      let value = Evaluator.eval ast in
+      Evaluator.print_value value;
       print_newline ()
+  | "run" ->
+      let tokens = Lexer.tokenize file_contents in
+      let stmts = Parser.parse_program tokens in
+      Evaluator.exec_program stmts
   | _ ->
       Printf.eprintf "Unknown command: %s\n" command;
       exit 1

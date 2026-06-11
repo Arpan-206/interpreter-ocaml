@@ -107,6 +107,25 @@ and parse_equality p =
 
 and parse_expression p = parse_equality p
 
+let parse_statement p =
+  match current_tok p with
+  | Lexer.PRINT -> (
+      let p' = advance p in
+      let p'', expr = parse_expression p' in
+      match current_tok p'' with
+      | Lexer.SEMICOLON -> (advance p'', Stmt.Print expr)
+      | _ -> parse_error p'' "Expect ';' after value.")
+  | _ -> parse_error p "Expected statement."
+
+let rec parse_program' p acc =
+  match current_tok p with
+  | Lexer.EOF -> List.rev acc
+  | _ ->
+      let p', stmt = parse_statement p in
+      parse_program' p' (stmt :: acc)
+
+let parse_program tokens = parse_program' (make tokens) []
+
 let parse tokens =
   let _p', ast = parse_expression (make tokens) in
   ast

@@ -64,3 +64,11 @@ let rec eval = function
           | Expr.NOT_EQUAL -> VBool (not eq)
           | _ -> assert false)
       | _, _, _ -> runtime_error "Operands must be two numbers or two strings.")
+
+let exec = function
+  | Stmt.Print expr ->
+      let v = eval expr in
+      print_value v;
+      print_newline ()
+
+let exec_program stmts = List.iter exec stmts
