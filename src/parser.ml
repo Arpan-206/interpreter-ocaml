@@ -26,7 +26,9 @@ let rec parse_primary p =
   | Lexer.NIL -> (advance p, Expr.Literal Expr.LitNil)
   | Lexer.NUMBER (n, _) -> (advance p, Expr.Literal (Expr.LitNum n))
   | Lexer.STRING s -> (advance p, Expr.Literal (Expr.LitStr s))
-  | Lexer.IDENTIFIER name -> (advance p, Expr.Variable name)
+  | Lexer.IDENTIFIER name ->
+      let line = current_line p in
+      (advance p, Expr.Variable (name, line))
   | Lexer.LEFT_PAREN -> (
       let p', expr = parse_expression (advance p) in
       match current_tok p' with
@@ -110,10 +112,9 @@ and parse_assignment p =
   let p', expr = parse_equality p in
   match current_tok p' with
   | Lexer.EQUAL -> (
-      (* right-associative: recurse on parse_assignment, not parse_equality *)
       let p'', value = parse_assignment (advance p') in
       match expr with
-      | Expr.Variable name -> (p'', Expr.Assign (name, value))
+      | Expr.Variable (name, line) -> (p'', Expr.Assign (name, value, line))
       | _ -> parse_error p' "Invalid assignment target.")
   | _ -> (p', expr)
 

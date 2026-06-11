@@ -3,8 +3,8 @@ type t =
   | Grouping of t
   | Unary of unary_op * t
   | Binary of t * binary_op * t
-  | Variable of string
-  | Assign of string * t
+  | Variable of string * int (* name + line *)
+  | Assign of string * t * int (* name + value + line *)
 
 and literal =
   | LitBool of bool
@@ -67,8 +67,8 @@ let rec print = function
       print_string " ";
       print r;
       print_string ")"
-  | Variable name -> print_string name
-  | Assign (name, e) ->
+  | Variable (name, _) -> print_string name
+  | Assign (name, e, _) ->
       print_string name;
       print_string " = ";
       print e

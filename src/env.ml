@@ -6,19 +6,17 @@ let define env name value = Hashtbl.replace env.vars name value
 
 let rec get env name =
   match Hashtbl.find_opt env.vars name with
-  | Some v -> v
+  | Some v -> Ok v
   | None -> (
       match env.parent with
-      | Some p -> get p name (* walk up the scope chain *)
-      | None ->
-          Printf.eprintf "Undefined variable '%s'.\n" name;
-          exit 70)
+      | Some p -> get p name
+      | None -> Error (Printf.sprintf "Undefined variable '%s'." name))
 
 let rec assign env name value =
-  if Hashtbl.mem env.vars name then Hashtbl.replace env.vars name value
+  if Hashtbl.mem env.vars name then (
+    Hashtbl.replace env.vars name value;
+    Ok ())
   else
     match env.parent with
-    | Some p -> assign p name value (* assign in the scope where it's defined *)
-    | None ->
-        Printf.eprintf "Undefined variable '%s'.\n" name;
-        exit 70
+    | Some p -> assign p name value
+    | None -> Error (Printf.sprintf "Undefined variable '%s'." name)

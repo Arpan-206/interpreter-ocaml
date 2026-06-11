@@ -2,17 +2,25 @@ let runtime_error msg =
   Printf.eprintf "%s\n" msg;
   exit 70
 
+let runtime_error_at line msg =
+  Printf.eprintf "%s\n[line %d]\n" msg line;
+  exit 70
+
 let rec eval env = function
   | Expr.Literal (Expr.LitBool b) -> Value.VBool b
   | Expr.Literal Expr.LitNil -> Value.VNil
   | Expr.Literal (Expr.LitNum f) -> Value.VNum f
   | Expr.Literal (Expr.LitStr s) -> Value.VString s
   | Expr.Grouping e -> eval env e
-  | Expr.Variable name -> Env.get env name
-  | Expr.Assign (name, e) ->
+  | Expr.Variable (name, line) -> (
+      match Env.get env name with
+      | Ok v -> v
+      | Error msg -> runtime_error_at line msg)
+  | Expr.Assign (name, e, line) -> (
       let v = eval env e in
-      Env.define env name v;
-      v
+      match Env.assign env name v with
+      | Ok () -> v
+      | Error msg -> runtime_error_at line msg)
   | Expr.Unary (op, e) -> (
       let v = eval env e in
       match (op, v) with
