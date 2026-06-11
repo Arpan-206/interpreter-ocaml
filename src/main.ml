@@ -49,7 +49,7 @@ let next_token l =
       if peek l = '=' then (advance (advance l), Token (EQUAL_EQUAL, "=="))
       else (advance l, Token (EQUAL, "="))
   | '!' ->
-      if peek l = '=' then (advance (advance l), Token (BANG_EQUAL, "=="))
+      if peek l = '=' then (advance (advance l), Token (BANG_EQUAL, "!="))
       else (advance l, Token (BANG, "="))
   | '\x00' -> (l, Token (EOF, ""))
   | c -> (advance l, LexError c)
