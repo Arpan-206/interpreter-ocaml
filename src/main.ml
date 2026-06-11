@@ -18,6 +18,7 @@ type token =
   | LESS_EQUAL
   | GREATER
   | GREATER_EQUAL
+  | STRING of string
   | EOF
 
 type lexer = { input : string; pos : int; line : int }
@@ -32,7 +33,7 @@ let peek l = current (advance l)
 
 type lex_result =
   | Token of token * string (* token + lexeme *)
-  | LexError of char (* bad character *)
+  | LexError of string (* error message *)
   | Skip (* whitespace — just recurse *)
 
 let next_token l =
@@ -68,8 +69,29 @@ let next_token l =
   | '>' ->
       if peek l = '=' then (advance (advance l), Token (GREATER_EQUAL, ">="))
       else (advance l, Token (GREATER, ">"))
+  | '"' ->
+      let start_line = l.line in
+      let rec scan_string l acc =
+        match current l with
+        | '\x00' ->
+            ( l,
+              LexError
+                (Printf.sprintf "[line %d] Error: Unterminated string."
+                   start_line) )
+        | '"' -> (advance l, Token (STRING acc, Printf.sprintf "\"%s\"" acc))
+        | '\n' ->
+            scan_string
+              { l with pos = l.pos + 1; line = l.line + 1 }
+              (acc ^ "\n")
+        | c -> scan_string (advance l) (acc ^ String.make 1 c)
+      in
+      scan_string (advance l) ""
   | '\x00' -> (l, Token (EOF, ""))
-  | c -> (advance l, LexError c)
+  | c ->
+      ( advance l,
+        LexError
+          (Printf.sprintf "[line %d] Error: Unexpected character: %c" l.line c)
+      )
 
 let token_to_string tok lexeme =
   match tok with
@@ -92,14 +114,15 @@ let token_to_string tok lexeme =
   | LESS_EQUAL -> Printf.sprintf "LESS_EQUAL %s null" lexeme
   | GREATER -> Printf.sprintf "GREATER %s null" lexeme
   | GREATER_EQUAL -> Printf.sprintf "GREATER_EQUAL %s null" lexeme
+  | STRING s -> Printf.sprintf "STRING %s null" s
   | EOF -> "EOF  null"
 
 let rec scan l had_error =
   let l', result = next_token l in
   match result with
   | Skip -> scan l' had_error
-  | LexError c ->
-      Printf.eprintf "[line %d] Error: Unexpected character: %c\n" l.line c;
+  | LexError msg ->
+      Printf.eprintf "%s\n" msg;
       scan l' true
   | Token (EOF, _) ->
       print_endline "EOF  null";
