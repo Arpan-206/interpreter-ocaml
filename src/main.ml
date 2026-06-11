@@ -14,6 +14,10 @@ type token =
   | EQUAL_EQUAL
   | BANG
   | BANG_EQUAL
+  | LESS
+  | LESS_EQUAL
+  | GREATER
+  | GREATER_EQUAL
   | EOF
 
 type lexer = { input : string; pos : int }
@@ -51,6 +55,12 @@ let next_token l =
   | '!' ->
       if peek l = '=' then (advance (advance l), Token (BANG_EQUAL, "!="))
       else (advance l, Token (BANG, "!"))
+  | '<' ->
+      if peek l = '=' then (advance (advance l), Token (LESS_EQUAL, "<="))
+      else (advance l, Token (LESS, "<"))
+  | '>' ->
+      if peek l = '=' then (advance (advance l), Token (GREATER_EQUAL, ">="))
+      else (advance l, Token (GREATER, ">"))
   | '\x00' -> (l, Token (EOF, ""))
   | c -> (advance l, LexError c)
 
@@ -71,6 +81,10 @@ let token_to_string tok lexeme =
   | EQUAL_EQUAL -> Printf.sprintf "EQUAL_EQUAL %s null" lexeme
   | BANG -> Printf.sprintf "BANG %s null" lexeme
   | BANG_EQUAL -> Printf.sprintf "BANG_EQUAL %s null" lexeme
+  | LESS -> Printf.sprintf "LESS %s null" lexeme
+  | LESS_EQUAL -> Printf.sprintf "LESS_EQUAL %s null" lexeme
+  | GREATER -> Printf.sprintf "GREATER %s null" lexeme
+  | GREATER_EQUAL -> Printf.sprintf "GREATER_EQUAL %s null" lexeme
   | EOF -> "EOF  null"
 
 let rec scan l had_error =
