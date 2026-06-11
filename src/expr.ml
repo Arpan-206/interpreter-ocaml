@@ -1,4 +1,8 @@
-type t = Literal of literal | Grouping of t | Unary of unary_op * t
+type t =
+  | Literal of literal
+  | Grouping of t
+  | Unary of unary_op * t
+  | Binary of t * binary_op * t
 
 and literal =
   | LitBool of bool
@@ -7,6 +11,7 @@ and literal =
   | LitStr of string (* ← and this, you'll need it soon *)
 
 and unary_op = Negate | Not
+and binary_op = Add | Subtract | Multiply | Divide
 
 let format_float f =
   if Float.is_integer f then Printf.sprintf "%.1f" f else string_of_float f
@@ -27,4 +32,19 @@ let rec print = function
   | Unary (Not, e) ->
       print_string "(! ";
       print e;
+      print_string ")"
+  | Binary (l, op, r) ->
+      let sym =
+        match op with
+        | Add -> "+"
+        | Subtract -> "-"
+        | Multiply -> "*"
+        | Divide -> "/"
+      in
+      print_string "(";
+      print_string sym;
+      print_string " ";
+      print l;
+      print_string " ";
+      print r;
       print_string ")"
