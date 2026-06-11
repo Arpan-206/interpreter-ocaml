@@ -1,4 +1,4 @@
-type token = LEFT_PAREN | RIGHT_PAREN | EOF
+type token = LEFT_PAREN | RIGHT_PAREN | LEFT_BRACE | RIGHT_BRACE | EOF
 type lexer = { input : string; pos : int }
 
 let make input = { input; pos = 0 }
