@@ -1,14 +1,26 @@
-type parser = { tokens : Lexer.token array; pos : int }
+type parser = { tokens : (Lexer.token * int) array; pos : int }
 
 let make tokens = { tokens; pos = 0 }
 
 let current { tokens; pos } =
-  if pos >= Array.length tokens then Lexer.EOF else tokens.(pos)
+  if pos >= Array.length tokens then (Lexer.EOF, 0) else tokens.(pos)
 
+let current_tok p = fst (current p)
+let current_line p = snd (current p)
 let advance p = { p with pos = p.pos + 1 }
 
+let parse_error p msg =
+  let line = current_line p in
+  let location =
+    match current_tok p with
+    | Lexer.EOF -> "end"
+    | tok -> Printf.sprintf "'%s'" (Lexer.token_lexeme tok)
+  in
+  Printf.eprintf "[line %d] Error at %s: %s\n" line location msg;
+  exit 65
+
 let rec parse_primary p =
-  match current p with
+  match current_tok p with
   | Lexer.TRUE -> (advance p, Expr.Literal (Expr.LitBool true))
   | Lexer.FALSE -> (advance p, Expr.Literal (Expr.LitBool false))
   | Lexer.NIL -> (advance p, Expr.Literal Expr.LitNil)
@@ -16,48 +28,45 @@ let rec parse_primary p =
   | Lexer.STRING s -> (advance p, Expr.Literal (Expr.LitStr s))
   | Lexer.LEFT_PAREN -> (
       let p', expr = parse_expression (advance p) in
-      match current p' with
+      match current_tok p' with
       | Lexer.RIGHT_PAREN -> (advance p', Expr.Grouping expr)
-      | _ -> failwith "Expected ')' after expression")
-  | _ -> failwith "Expected expression"
+      | _ -> parse_error p' "Expect ')' after expression.")
+  | _ -> parse_error p "Expect expression."
 
 and parse_unary p =
-  match current p with
+  match current_tok p with
   | Lexer.BANG ->
       let p', e = parse_unary (advance p) in
       (p', Expr.Unary (Expr.Not, e))
   | Lexer.MINUS ->
       let p', e = parse_unary (advance p) in
       (p', Expr.Unary (Expr.Negate, e))
-  | _ -> parse_primary p (* no unary op — fall through to primary *)
+  | _ -> parse_primary p
 
-(* factor handles * and / — higher precedence *)
 and parse_factor p =
   let p', left = parse_unary p in
   let rec loop p left =
-    match current p with
+    match current_tok p with
     | Lexer.STAR ->
-        let p', right = parse_unary (advance p) in
-        loop p' (Expr.Binary (left, Expr.Multiply, right))
+        let p', r = parse_unary (advance p) in
+        loop p' (Expr.Binary (left, Expr.Multiply, r))
     | Lexer.SLASH ->
-        let p', right = parse_unary (advance p) in
-        loop p' (Expr.Binary (left, Expr.Divide, right))
+        let p', r = parse_unary (advance p) in
+        loop p' (Expr.Binary (left, Expr.Divide, r))
     | _ -> (p, left)
   in
   loop p' left
 
-(* term handles + and - — lower precedence, calls factor for operands *)
 and parse_term p =
   let p', left = parse_factor p in
-  (* ← calls parse_factor, not parse_unary *)
   let rec loop p left =
-    match current p with
+    match current_tok p with
     | Lexer.PLUS ->
-        let p', right = parse_factor (advance p) in
-        loop p' (Expr.Binary (left, Expr.Add, right))
+        let p', r = parse_factor (advance p) in
+        loop p' (Expr.Binary (left, Expr.Add, r))
     | Lexer.MINUS ->
-        let p', right = parse_factor (advance p) in
-        loop p' (Expr.Binary (left, Expr.Subtract, right))
+        let p', r = parse_factor (advance p) in
+        loop p' (Expr.Binary (left, Expr.Subtract, r))
     | _ -> (p, left)
   in
   loop p' left
@@ -65,7 +74,7 @@ and parse_term p =
 and parse_comparison p =
   let p', left = parse_term p in
   let rec loop p left =
-    match current p with
+    match current_tok p with
     | Lexer.GREATER ->
         let p', r = parse_term (advance p) in
         loop p' (Expr.Binary (left, Expr.GREATER, r))
@@ -85,7 +94,7 @@ and parse_comparison p =
 and parse_equality p =
   let p', left = parse_comparison p in
   let rec loop p left =
-    match current p with
+    match current_tok p with
     | Lexer.EQUAL_EQUAL ->
         let p', r = parse_comparison (advance p) in
         loop p' (Expr.Binary (left, Expr.EQUAL, r))
@@ -97,10 +106,6 @@ and parse_equality p =
   loop p' left
 
 and parse_expression p = parse_equality p
-
-let parse tokens =
-  let _p', ast = parse_expression (make tokens) in
-  ast
 
 let parse tokens =
   let _p', ast = parse_expression (make tokens) in

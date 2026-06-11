@@ -241,7 +241,49 @@ let tokenize input =
         Printf.eprintf "%s\n" msg;
         go l' acc
     | Token (tok, _) ->
-        let acc' = tok :: acc in
+        let acc' = (tok, l.line) :: acc in
+        (* pair token with current line *)
         if tok = EOF then Array.of_list (List.rev acc') else go l' acc'
   in
   go (make input) []
+
+let token_lexeme = function
+  | LEFT_PAREN -> "("
+  | RIGHT_PAREN -> ")"
+  | LEFT_BRACE -> "{"
+  | RIGHT_BRACE -> "}"
+  | STAR -> "*"
+  | DOT -> "."
+  | COMMA -> ","
+  | PLUS -> "+"
+  | MINUS -> "-"
+  | SEMICOLON -> ";"
+  | SLASH -> "/"
+  | EQUAL -> "="
+  | EQUAL_EQUAL -> "=="
+  | BANG -> "!"
+  | BANG_EQUAL -> "!="
+  | LESS -> "<"
+  | LESS_EQUAL -> "<="
+  | GREATER -> ">"
+  | GREATER_EQUAL -> ">="
+  | AND -> "and"
+  | CLASS -> "class"
+  | ELSE -> "else"
+  | FALSE -> "false"
+  | FOR -> "for"
+  | FUN -> "fun"
+  | IF -> "if"
+  | NIL -> "nil"
+  | OR -> "or"
+  | PRINT -> "print"
+  | RETURN -> "return"
+  | SUPER -> "super"
+  | THIS -> "this"
+  | TRUE -> "true"
+  | VAR -> "var"
+  | WHILE -> "while"
+  | STRING s -> Printf.sprintf "\"%s\"" s
+  | NUMBER (_, raw) -> raw
+  | IDENTIFIER s -> s
+  | EOF -> ""
