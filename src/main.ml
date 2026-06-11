@@ -19,8 +19,9 @@ let () =
   | "evaluate" ->
       let tokens = Lexer.tokenize file_contents in
       let ast = Parser.parse tokens in
-      let value = Evaluator.eval ast in
-      Evaluator.print_value value;
+      let env = Env.make () in
+      let value = Evaluator.eval env ast in
+      Value.print value;
       print_newline ()
   | "run" ->
       let tokens = Lexer.tokenize file_contents in

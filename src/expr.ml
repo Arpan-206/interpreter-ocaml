@@ -3,6 +3,7 @@ type t =
   | Grouping of t
   | Unary of unary_op * t
   | Binary of t * binary_op * t
+  | Variable of string
 
 and literal =
   | LitBool of bool
@@ -65,3 +66,4 @@ let rec print = function
       print_string " ";
       print r;
       print_string ")"
+  | Variable name -> print_string name

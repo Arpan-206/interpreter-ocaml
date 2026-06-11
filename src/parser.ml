@@ -26,6 +26,7 @@ let rec parse_primary p =
   | Lexer.NIL -> (advance p, Expr.Literal Expr.LitNil)
   | Lexer.NUMBER (n, _) -> (advance p, Expr.Literal (Expr.LitNum n))
   | Lexer.STRING s -> (advance p, Expr.Literal (Expr.LitStr s))
+  | Lexer.IDENTIFIER name -> (advance p, Expr.Variable name)
   | Lexer.LEFT_PAREN -> (
       let p', expr = parse_expression (advance p) in
       match current_tok p' with
@@ -115,6 +116,21 @@ let parse_statement p =
       match current_tok p'' with
       | Lexer.SEMICOLON -> (advance p'', Stmt.Print expr)
       | _ -> parse_error p'' "Expect ';' after value.")
+  | Lexer.VAR -> (
+      let p' = advance p in
+      match current_tok p' with
+      | Lexer.IDENTIFIER name -> (
+          let p'' = advance p' in
+          match current_tok p'' with
+          | Lexer.EQUAL -> (
+              let p''', initializer_expr = parse_expression (advance p'') in
+              match current_tok p''' with
+              | Lexer.SEMICOLON ->
+                  (advance p''', Stmt.VarDecl (name, Some initializer_expr))
+              | _ -> parse_error p''' "Expect ';' after variable declaration.")
+          | Lexer.SEMICOLON -> (advance p'', Stmt.VarDecl (name, None))
+          | _ -> parse_error p'' "Expect '=' or ';' after variable name.")
+      | _ -> parse_error p' "Expect variable name.")
   | _ -> (
       let p', expr = parse_expression p in
       match current_tok p' with
