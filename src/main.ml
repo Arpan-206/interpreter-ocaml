@@ -20,6 +20,7 @@ type token =
   | GREATER_EQUAL
   | STRING of string
   | NUMBER of float * string
+  | IDENTIFIER of string
   | EOF
 
 type lexer = { input : string; pos : int; line : int }
@@ -108,6 +109,18 @@ let next_token l =
   | '0' .. '9' ->
       let l', value, lexeme = read_number l in
       (l', Token (NUMBER (value, lexeme), lexeme))
+  | 'a' .. 'z' | 'A' .. 'Z' | '_' ->
+      let buf = Buffer.create 8 in
+      let rec consume l =
+        match current l with
+        | 'a' .. 'z' | 'A' .. 'Z' | '_' | '0' .. '9' ->
+            Buffer.add_char buf (current l);
+            consume (advance l)
+        | _ -> l
+      in
+      let l' = consume l in
+      let lexeme = Buffer.contents buf in
+      (l', Token (IDENTIFIER lexeme, lexeme))
   | c ->
       ( advance l,
         LexError
@@ -142,6 +155,7 @@ let token_to_string tok lexeme =
         else string_of_float f
       in
       Printf.sprintf "NUMBER %s %s" raw lit
+  | IDENTIFIER name -> Printf.sprintf "IDENTIFIER %s null" name
   | EOF -> "EOF  null"
 
 let rec scan l had_error =
