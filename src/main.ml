@@ -20,9 +20,9 @@ type token =
   | GREATER_EQUAL
   | EOF
 
-type lexer = { input : string; pos : int }
+type lexer = { input : string; pos : int; line : int }
 
-let make input = { input; pos = 0 }
+let make input = { input; pos = 0; line = 1 }
 
 let current { input; pos } =
   if pos >= String.length input then '\x00' else input.[pos]
@@ -37,7 +37,8 @@ type lex_result =
 
 let next_token l =
   match current l with
-  | ' ' | '\t' | '\n' | '\r' -> (advance l, Skip)
+  | ' ' | '\t' | '\r' -> (advance l, Skip)
+  | '\n' -> ({ l with pos = l.pos + 1; line = l.line + 1 }, Skip)
   | '(' -> (advance l, Token (LEFT_PAREN, "("))
   | ')' -> (advance l, Token (RIGHT_PAREN, ")"))
   | '{' -> (advance l, Token (LEFT_BRACE, "{"))
@@ -98,7 +99,7 @@ let rec scan l had_error =
   match result with
   | Skip -> scan l' had_error
   | LexError c ->
-      Printf.eprintf "[line 1] Error: Unexpected character: %c\n" c;
+      Printf.eprintf "[line %d] Error: Unexpected character: %c\n" l.line c;
       scan l' true
   | Token (EOF, _) ->
       print_endline "EOF  null";
