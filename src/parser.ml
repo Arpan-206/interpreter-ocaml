@@ -13,6 +13,7 @@ let parse_expression p =
   | Lexer.FALSE -> (advance p, Expr.Literal (Expr.LitBool false))
   | Lexer.NIL -> (advance p, Expr.Literal Expr.LitNil)
   | Lexer.NUMBER (n, _) -> (advance p, Expr.Literal (Expr.LitNum n))
+  | Lexer.STRING s -> (advance p, Expr.Literal (Expr.LitStr s))
   | _ -> failwith "Expected expression"
 
 let parse tokens =
