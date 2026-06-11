@@ -70,5 +70,6 @@ let exec = function
       let v = eval expr in
       print_value v;
       print_newline ()
+  | Stmt.Expression expr -> ignore (eval expr)
 
 let exec_program stmts = List.iter exec stmts

@@ -1,1 +1,1 @@
-type t = Print of Expr.t
+type t = Print of Expr.t | Expression of Expr.t

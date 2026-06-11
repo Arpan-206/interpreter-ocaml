@@ -115,7 +115,11 @@ let parse_statement p =
       match current_tok p'' with
       | Lexer.SEMICOLON -> (advance p'', Stmt.Print expr)
       | _ -> parse_error p'' "Expect ';' after value.")
-  | _ -> parse_error p "Expected statement."
+  | _ -> (
+      let p', expr = parse_expression p in
+      match current_tok p' with
+      | Lexer.SEMICOLON -> (advance p', Stmt.Expression expr)
+      | _ -> parse_error p' "Expect ';' after expression.")
 
 let rec parse_program' p acc =
   match current_tok p with
