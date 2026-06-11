@@ -27,4 +27,15 @@ let rec eval = function
       | Expr.Not, VNil -> VBool true (* !nil is truthy in Lox *)
       | Expr.Not, _ -> VBool false (* everything else is truthy *)
       | Expr.Negate, _ -> runtime_error "Operand must be a number.")
-  | Expr.Binary _ -> failwith "binary not yet implemented"
+  | Expr.Binary (e1, op, e2) -> (
+      let v1 = eval e1 in
+      let v2 = eval e2 in
+      match (v1, op, v2) with
+      | VNum f1, Expr.Add, VNum f2 -> VNum (f1 +. f2)
+      | VNum f1, Expr.Subtract, VNum f2 -> VNum (f1 -. f2)
+      | VNum f1, Expr.Multiply, VNum f2 -> VNum (f1 *. f2)
+      | VNum f1, Expr.Divide, VNum f2 ->
+          if Float.equal f2 0. then runtime_error "Division by zero"
+          else VNum (f1 /. f2)
+      | VString s1, Expr.Add, VString s2 -> VString (s1 ^ s2)
+      | _, _, _ -> runtime_error "Operands must be two numbers or two strings.")
