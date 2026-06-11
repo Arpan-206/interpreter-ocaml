@@ -19,6 +19,7 @@ type token =
   | GREATER
   | GREATER_EQUAL
   | STRING of string
+  | NUMBER of float * string
   | EOF
 
 type lexer = { input : string; pos : int; line : int }
@@ -30,6 +31,23 @@ let current { input; pos } =
 
 let advance l = { l with pos = l.pos + 1 }
 let peek l = current (advance l)
+
+let read_number l =
+  let buf = Buffer.create 8 in
+  let rec consume l =
+    match current l with
+    | '0' .. '9' ->
+        Buffer.add_char buf (current l);
+        consume (advance l)
+    | '.' when match peek l with '0' .. '9' -> true | _ -> false ->
+        (* only consume '.' if followed by a digit — avoids eating method calls like 1.foo *)
+        Buffer.add_char buf '.';
+        consume (advance l)
+    | _ -> l
+  in
+  let l' = consume l in
+  let s = Buffer.contents buf in
+  (l', float_of_string s, s)
 
 type lex_result =
   | Token of token * string (* token + lexeme *)
@@ -87,6 +105,9 @@ let next_token l =
       in
       scan_string (advance l) ""
   | '\x00' -> (l, Token (EOF, ""))
+  | '0' .. '9' ->
+      let l', value, lexeme = read_number l in
+      (l', Token (NUMBER (value, lexeme), lexeme))
   | c ->
       ( advance l,
         LexError
@@ -115,6 +136,12 @@ let token_to_string tok lexeme =
   | GREATER -> Printf.sprintf "GREATER %s null" lexeme
   | GREATER_EQUAL -> Printf.sprintf "GREATER_EQUAL %s null" lexeme
   | STRING s -> Printf.sprintf "STRING \"%s\" %s" s s
+  | NUMBER (f, raw) ->
+      let lit =
+        if Float.is_integer f then Printf.sprintf "%.1f" f
+        else string_of_float f
+      in
+      Printf.sprintf "NUMBER %s %s" raw lit
   | EOF -> "EOF  null"
 
 let rec scan l had_error =
