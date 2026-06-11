@@ -114,7 +114,7 @@ let token_to_string tok lexeme =
   | LESS_EQUAL -> Printf.sprintf "LESS_EQUAL %s null" lexeme
   | GREATER -> Printf.sprintf "GREATER %s null" lexeme
   | GREATER_EQUAL -> Printf.sprintf "GREATER_EQUAL %s null" lexeme
-  | STRING s -> Printf.sprintf "STRING %s null" s
+  | STRING s -> Printf.sprintf "STRING \"%s\" null" s
   | EOF -> "EOF  null"
 
 let rec scan l had_error =
