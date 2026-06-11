@@ -31,7 +31,29 @@ and parse_unary p =
       (p', Expr.Unary (Expr.Negate, e))
   | _ -> parse_primary p (* no unary op — fall through to primary *)
 
-and parse_expression p = parse_unary p
+and parse_term p =
+  let p', left = parse_unary p in
+  (* parse left operand *)
+  let rec loop p left =
+    match current p with
+    | Lexer.PLUS ->
+        let p', right = parse_unary (advance p) in
+        loop p' (Expr.Binary (left, Expr.Add, right))
+    | Lexer.MINUS ->
+        let p', right = parse_unary (advance p) in
+        loop p' (Expr.Binary (left, Expr.Subtract, right))
+    | Lexer.STAR ->
+        let p', right = parse_unary (advance p) in
+        loop p' (Expr.Binary (left, Expr.Multiply, right))
+    | Lexer.SLASH ->
+        let p', right = parse_unary (advance p) in
+        loop p' (Expr.Binary (left, Expr.Divide, right))
+    | _ -> (p, left)
+    (* no more +/-, done *)
+  in
+  loop p' left
+
+and parse_expression p = parse_term p (* expression now goes through term *)
 
 let parse tokens =
   let _p', ast = parse_expression (make tokens) in
