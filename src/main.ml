@@ -13,6 +13,8 @@ let rec next_token l =
   | ' ' | '\t' | '\n' | '\r' -> next_token (advance l)
   | '(' -> (advance l, LEFT_PAREN, "(")
   | ')' -> (advance l, RIGHT_PAREN, ")")
+  | '{' -> (advance l, LEFT_BRACE, "{")
+  | '}' -> (advance l, RIGHT_BRACE, "}")
   | '\x00' -> (l, EOF, "")
   | c ->
       Printf.eprintf "[line 1] Error: Unexpected character: %c\n" c;
@@ -22,6 +24,8 @@ let token_to_string tok lexeme =
   match tok with
   | LEFT_PAREN -> Printf.sprintf "LEFT_PAREN %s null" lexeme
   | RIGHT_PAREN -> Printf.sprintf "RIGHT_PAREN %s null" lexeme
+  | LEFT_BRACE -> Printf.sprintf "LEFT_BRACE %s null" lexeme
+  | RIGHT_BRACE -> Printf.sprintf "RIGHT_BRACE %s null" lexeme
   | EOF -> "EOF  null"
 
 (* Returns true if a lex error occurred *)
