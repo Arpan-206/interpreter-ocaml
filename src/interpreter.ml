@@ -50,4 +50,17 @@ let rec eval = function
           | Expr.LESS -> VBool (cmp < 0)
           | Expr.LESS_EQUAL -> VBool (cmp <= 0)
           | _ -> assert false)
+      | v1, (Expr.EQUAL | Expr.NOT_EQUAL), v2 -> (
+          let eq =
+            match (v1, v2) with
+            | VNil, VNil -> true
+            | VBool b1, VBool b2 -> b1 = b2
+            | VNum f1, VNum f2 -> Float.equal f1 f2
+            | VString s1, VString s2 -> s1 = s2
+            | _ -> false
+          in
+          match op with
+          | Expr.EQUAL -> VBool eq
+          | Expr.NOT_EQUAL -> VBool (not eq)
+          | _ -> assert false)
       | _, _, _ -> runtime_error "Operands must be two numbers or two strings.")
