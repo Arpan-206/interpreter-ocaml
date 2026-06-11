@@ -82,7 +82,21 @@ and parse_comparison p =
   in
   loop p' left
 
-and parse_expression p = parse_comparison p
+and parse_equality p =
+  let p', left = parse_comparison p in
+  let rec loop p left =
+    match current p with
+    | Lexer.EQUAL_EQUAL ->
+        let p', r = parse_comparison (advance p) in
+        loop p' (Expr.Binary (left, Expr.EQUAL, r))
+    | Lexer.BANG_EQUAL ->
+        let p', r = parse_comparison (advance p) in
+        loop p' (Expr.Binary (left, Expr.NOT_EQUAL, r))
+    | _ -> (p, left)
+  in
+  loop p' left
+
+and parse_expression p = parse_equality p
 
 let parse tokens =
   let _p', ast = parse_expression (make tokens) in

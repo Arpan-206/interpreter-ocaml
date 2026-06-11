@@ -21,6 +21,8 @@ and binary_op =
   | GREATER_EQUAL
   | LESS
   | LESS_EQUAL
+  | EQUAL
+  | NOT_EQUAL
 
 let format_float f =
   if Float.is_integer f then Printf.sprintf "%.1f" f else string_of_float f
@@ -53,6 +55,8 @@ let rec print = function
         | GREATER_EQUAL -> ">="
         | LESS -> "<"
         | LESS_EQUAL -> "<="
+        | EQUAL -> "=="
+        | NOT_EQUAL -> "!="
       in
       print_string "(";
       print_string sym;
