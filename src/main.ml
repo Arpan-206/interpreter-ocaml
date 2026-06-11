@@ -10,6 +10,8 @@ type token =
   | MINUS
   | SEMICOLON
   | SLASH
+  | EQUAL
+  | EQUAL_EQUAL
   | EOF
 
 type lexer = { input : string; pos : int }
@@ -20,6 +22,7 @@ let current { input; pos } =
   if pos >= String.length input then '\x00' else input.[pos]
 
 let advance l = { l with pos = l.pos + 1 }
+let peek l = current (advance l)
 
 type lex_result =
   | Token of token * string (* token + lexeme *)
@@ -40,6 +43,9 @@ let next_token l =
   | '-' -> (advance l, Token (MINUS, "-"))
   | ';' -> (advance l, Token (SEMICOLON, ";"))
   | '/' -> (advance l, Token (SLASH, "/"))
+  | '=' ->
+      if peek l = '=' then (advance (advance l), Token (EQUAL_EQUAL, "=="))
+      else (advance l, Token (EQUAL, "="))
   | '\x00' -> (l, Token (EOF, ""))
   | c -> (advance l, LexError c)
 
@@ -56,6 +62,8 @@ let token_to_string tok lexeme =
   | MINUS -> Printf.sprintf "MINUS %s null" lexeme
   | SEMICOLON -> Printf.sprintf "SEMICOLON %s null" lexeme
   | SLASH -> Printf.sprintf "SLASH %s null" lexeme
+  | EQUAL -> Printf.sprintf "EQUAL %s null" lexeme
+  | EQUAL_EQUAL -> Printf.sprintf "EQUAL_EQUAL %s null" lexeme
   | EOF -> "EOF  null"
 
 let rec scan l had_error =
