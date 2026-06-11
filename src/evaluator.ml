@@ -57,7 +57,7 @@ let rec eval env = function
           | _ -> assert false)
       | _ -> runtime_error "Operands must be two numbers or two strings.")
 
-let exec env = function
+let rec exec env = function
   | Stmt.Print expr ->
       Value.print (eval env expr);
       print_newline ()
@@ -67,6 +67,9 @@ let exec env = function
         match init with Some expr -> eval env expr | None -> Value.VNil
       in
       Env.define env name v
+  | Stmt.Block stmts ->
+      let child_env = Env.make_child env in
+      List.iter (exec child_env) stmts
 
 let exec_program stmts =
   let env = Env.make () in
