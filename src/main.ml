@@ -48,7 +48,13 @@ let next_token l =
   | '+' -> (advance l, Token (PLUS, "+"))
   | '-' -> (advance l, Token (MINUS, "-"))
   | ';' -> (advance l, Token (SEMICOLON, ";"))
-  | '/' -> (advance l, Token (SLASH, "/"))
+  | '/' ->
+      if peek l = '/' then
+        let rec skip_line l =
+          match current l with '\n' | '\x00' -> l | _ -> skip_line (advance l)
+        in
+        (skip_line (advance (advance l)), Skip)
+      else (advance l, Token (SLASH, "/"))
   | '=' ->
       if peek l = '=' then (advance (advance l), Token (EQUAL_EQUAL, "=="))
       else (advance l, Token (EQUAL, "="))
