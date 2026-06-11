@@ -9,3 +9,9 @@ let get env name =
   | None ->
       Printf.eprintf "Undefined variable '%s'.\n" name;
       exit 70
+
+let assign env name value =
+  if Hashtbl.mem env.vars name then Hashtbl.replace env.vars name value
+  else (
+    Printf.eprintf "Undefined variable '%s'.\n" name;
+    exit 70)

@@ -106,7 +106,18 @@ and parse_equality p =
   in
   loop p' left
 
-and parse_expression p = parse_equality p
+and parse_assignment p =
+  let p', expr = parse_equality p in
+  match current_tok p' with
+  | Lexer.EQUAL -> (
+      (* right-associative: recurse on parse_assignment, not parse_equality *)
+      let p'', value = parse_assignment (advance p') in
+      match expr with
+      | Expr.Variable name -> (p'', Expr.Assign (name, value))
+      | _ -> parse_error p' "Invalid assignment target.")
+  | _ -> (p', expr)
+
+and parse_expression p = parse_assignment p
 
 let parse_statement p =
   match current_tok p with

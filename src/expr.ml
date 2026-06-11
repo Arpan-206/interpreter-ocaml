@@ -4,6 +4,7 @@ type t =
   | Unary of unary_op * t
   | Binary of t * binary_op * t
   | Variable of string
+  | Assign of string * t
 
 and literal =
   | LitBool of bool
@@ -67,3 +68,7 @@ let rec print = function
       print r;
       print_string ")"
   | Variable name -> print_string name
+  | Assign (name, e) ->
+      print_string name;
+      print_string " = ";
+      print e

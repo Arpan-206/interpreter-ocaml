@@ -9,6 +9,10 @@ let rec eval env = function
   | Expr.Literal (Expr.LitStr s) -> Value.VString s
   | Expr.Grouping e -> eval env e
   | Expr.Variable name -> Env.get env name
+  | Expr.Assign (name, e) ->
+      let v = eval env e in
+      Env.define env name v;
+      v
   | Expr.Unary (op, e) -> (
       let v = eval env e in
       match (op, v) with

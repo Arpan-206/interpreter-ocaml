@@ -1,5 +1,8 @@
-var bar = 99;
-var foo = 99;
-print bar + foo;
-var quz = 99;
-print bar + foo + quz;
+var hello = 65;
+var baz;
+var quz;
+
+hello = baz = quz = hello * 2;
+print hello;
+print baz;
+print baz;
