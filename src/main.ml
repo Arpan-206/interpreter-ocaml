@@ -21,6 +21,22 @@ type token =
   | STRING of string
   | NUMBER of float * string
   | IDENTIFIER of string
+  | AND
+  | CLASS
+  | ELSE
+  | FALSE
+  | FOR
+  | FUN
+  | IF
+  | NIL
+  | OR
+  | PRINT
+  | RETURN
+  | SUPER
+  | THIS
+  | TRUE
+  | VAR
+  | WHILE
   | EOF
 
 type lexer = { input : string; pos : int; line : int }
@@ -49,6 +65,25 @@ let read_number l =
   let l' = consume l in
   let s = Buffer.contents buf in
   (l', float_of_string s, s)
+
+let keyword_of_string = function
+  | "and" -> Some AND
+  | "class" -> Some CLASS
+  | "else" -> Some ELSE
+  | "false" -> Some FALSE
+  | "for" -> Some FOR
+  | "fun" -> Some FUN
+  | "if" -> Some IF
+  | "nil" -> Some NIL
+  | "or" -> Some OR
+  | "print" -> Some PRINT
+  | "return" -> Some RETURN
+  | "super" -> Some SUPER
+  | "this" -> Some THIS
+  | "true" -> Some TRUE
+  | "var" -> Some VAR
+  | "while" -> Some WHILE
+  | _ -> None
 
 type lex_result =
   | Token of token * string (* token + lexeme *)
@@ -90,21 +125,25 @@ let next_token l =
       else (advance l, Token (GREATER, ">"))
   | '"' ->
       let start_line = l.line in
-      let rec scan_string l acc =
+      let buf = Buffer.create 32 in
+      let rec scan_string l =
         match current l with
         | '\x00' ->
             ( l,
               LexError
                 (Printf.sprintf "[line %d] Error: Unterminated string."
                    start_line) )
-        | '"' -> (advance l, Token (STRING acc, Printf.sprintf "\"%s\"" acc))
+        | '"' ->
+            let s = Buffer.contents buf in
+            (advance l, Token (STRING s, Printf.sprintf "\"%s\"" s))
         | '\n' ->
-            scan_string
-              { l with pos = l.pos + 1; line = l.line + 1 }
-              (acc ^ "\n")
-        | c -> scan_string (advance l) (acc ^ String.make 1 c)
+            Buffer.add_char buf '\n';
+            scan_string { l with pos = l.pos + 1; line = l.line + 1 }
+        | c ->
+            Buffer.add_char buf c;
+            scan_string (advance l)
       in
-      scan_string (advance l) ""
+      scan_string (advance l)
   | '\x00' -> (l, Token (EOF, ""))
   | '0' .. '9' ->
       let l', value, lexeme = read_number l in
@@ -120,7 +159,12 @@ let next_token l =
       in
       let l' = consume l in
       let lexeme = Buffer.contents buf in
-      (l', Token (IDENTIFIER lexeme, lexeme))
+      let tok =
+        match keyword_of_string lexeme with
+        | Some kw -> kw
+        | None -> IDENTIFIER lexeme
+      in
+      (l', Token (tok, lexeme))
   | c ->
       ( advance l,
         LexError
@@ -156,6 +200,22 @@ let token_to_string tok lexeme =
       in
       Printf.sprintf "NUMBER %s %s" raw lit
   | IDENTIFIER name -> Printf.sprintf "IDENTIFIER %s null" name
+  | AND -> Printf.sprintf "AND %s null" lexeme
+  | CLASS -> Printf.sprintf "CLASS %s null" lexeme
+  | ELSE -> Printf.sprintf "ELSE %s null" lexeme
+  | FALSE -> Printf.sprintf "FALSE %s null" lexeme
+  | FOR -> Printf.sprintf "FOR %s null" lexeme
+  | FUN -> Printf.sprintf "FUN %s null" lexeme
+  | IF -> Printf.sprintf "IF %s null" lexeme
+  | NIL -> Printf.sprintf "NIL %s null" lexeme
+  | OR -> Printf.sprintf "OR %s null" lexeme
+  | PRINT -> Printf.sprintf "PRINT %s null" lexeme
+  | RETURN -> Printf.sprintf "RETURN %s null" lexeme
+  | SUPER -> Printf.sprintf "SUPER %s null" lexeme
+  | THIS -> Printf.sprintf "THIS %s null" lexeme
+  | TRUE -> Printf.sprintf "TRUE %s null" lexeme
+  | VAR -> Printf.sprintf "VAR %s null" lexeme
+  | WHILE -> Printf.sprintf "WHILE %s null" lexeme
   | EOF -> "EOF  null"
 
 let rec scan l had_error =
