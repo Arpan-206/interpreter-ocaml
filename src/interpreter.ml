@@ -38,4 +38,16 @@ let rec eval = function
           if Float.equal f2 0. then runtime_error "Division by zero"
           else VNum (f1 /. f2)
       | VString s1, Expr.Add, VString s2 -> VString (s1 ^ s2)
+      | ( VNum f1,
+          (Expr.GREATER | Expr.GREATER_EQUAL | Expr.LESS | Expr.LESS_EQUAL),
+          VNum f2 ) -> (
+          let cmp =
+            if Float.equal f1 f2 then 0 else if f1 < f2 then -1 else 1
+          in
+          match op with
+          | Expr.GREATER -> VBool (cmp > 0)
+          | Expr.GREATER_EQUAL -> VBool (cmp >= 0)
+          | Expr.LESS -> VBool (cmp < 0)
+          | Expr.LESS_EQUAL -> VBool (cmp <= 0)
+          | _ -> assert false)
       | _, _, _ -> runtime_error "Operands must be two numbers or two strings.")
