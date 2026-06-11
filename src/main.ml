@@ -21,24 +21,27 @@ let current { input; pos } =
 
 let advance l = { l with pos = l.pos + 1 }
 
-let rec next_token l =
+type lex_result =
+  | Token of token * string (* token + lexeme *)
+  | LexError of char (* bad character *)
+  | Skip (* whitespace — just recurse *)
+
+let next_token l =
   match current l with
-  | ' ' | '\t' | '\n' | '\r' -> next_token (advance l)
-  | '(' -> (advance l, LEFT_PAREN, "(")
-  | ')' -> (advance l, RIGHT_PAREN, ")")
-  | '{' -> (advance l, LEFT_BRACE, "{")
-  | '}' -> (advance l, RIGHT_BRACE, "}")
-  | '*' -> (advance l, STAR, "*")
-  | '.' -> (advance l, DOT, ".")
-  | ',' -> (advance l, COMMA, ",")
-  | '+' -> (advance l, PLUS, "+")
-  | '-' -> (advance l, MINUS, "-")
-  | ';' -> (advance l, SEMICOLON, ";")
-  | '/' -> (advance l, SLASH, "/")
-  | '\x00' -> (l, EOF, "")
-  | c ->
-      Printf.eprintf "[line 1] Error: Unexpected character: %c\n" c;
-      next_token (advance l)
+  | ' ' | '\t' | '\n' | '\r' -> (advance l, Skip)
+  | '(' -> (advance l, Token (LEFT_PAREN, "("))
+  | ')' -> (advance l, Token (RIGHT_PAREN, ")"))
+  | '{' -> (advance l, Token (LEFT_BRACE, "{"))
+  | '}' -> (advance l, Token (RIGHT_BRACE, "}"))
+  | '*' -> (advance l, Token (STAR, "*"))
+  | '.' -> (advance l, Token (DOT, "."))
+  | ',' -> (advance l, Token (COMMA, ","))
+  | '+' -> (advance l, Token (PLUS, "+"))
+  | '-' -> (advance l, Token (MINUS, "-"))
+  | ';' -> (advance l, Token (SEMICOLON, ";"))
+  | '/' -> (advance l, Token (SLASH, "/"))
+  | '\x00' -> (l, Token (EOF, ""))
+  | c -> (advance l, LexError c)
 
 let token_to_string tok lexeme =
   match tok with
@@ -55,11 +58,19 @@ let token_to_string tok lexeme =
   | SLASH -> Printf.sprintf "SLASH %s null" lexeme
   | EOF -> "EOF  null"
 
-(* Returns true if a lex error occurred *)
 let rec scan l had_error =
-  let l', tok, lexeme = next_token l in
-  print_endline (token_to_string tok lexeme);
-  match tok with EOF -> had_error | _ -> scan l' had_error
+  let l', result = next_token l in
+  match result with
+  | Skip -> scan l' had_error
+  | LexError c ->
+      Printf.eprintf "[line 1] Error: Unexpected character: %c\n" c;
+      scan l' true
+  | Token (EOF, _) ->
+      print_endline "EOF  null";
+      had_error
+  | Token (tok, lexeme) ->
+      print_endline (token_to_string tok lexeme);
+      scan l' had_error
 
 let () =
   if Array.length Sys.argv < 3 then (
