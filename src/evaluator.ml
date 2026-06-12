@@ -90,6 +90,10 @@ let rec exec env = function
       let value = eval env condition in
       if is_truthy value then exec env then_branch
       else match else_branch with Some s -> exec env s | None -> ())
+  | Stmt.While (condition, body) ->
+      while is_truthy (eval env condition) do
+        exec env body
+      done
 
 let exec_program stmts =
   let env = Env.make () in

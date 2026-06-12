@@ -197,6 +197,21 @@ and parse_statement p =
         | _ -> (p, None)
       in
       (p, Stmt.If (condition, then_branch, else_branch))
+  | Lexer.WHILE ->
+      let p = advance p in
+      let p =
+        match current_tok p with
+        | Lexer.LEFT_PAREN -> advance p
+        | _ -> parse_error p "Expect '(' after 'while'."
+      in
+      let p, condition = parse_expression p in
+      let p =
+        match current_tok p with
+        | Lexer.RIGHT_PAREN -> advance p
+        | _ -> parse_error p "Expect ')' after while condition."
+      in
+      let p, body = parse_statement p in
+      (p, Stmt.While (condition, body))
   | _ -> (
       let p', expr = parse_expression p in
       match current_tok p' with
