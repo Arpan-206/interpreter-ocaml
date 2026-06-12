@@ -37,6 +37,17 @@ let rec eval env = function
   | Expr.And (left, right) ->
       let v = eval env left in
       if not (is_truthy v) then v else eval env right
+  | Expr.Call (callee, args, line) -> (
+      let fn = eval env callee in
+      let arg_vals = List.map (eval env) args in
+      match fn with
+      | Value.VCallable c ->
+          if List.length arg_vals <> c.arity then
+            runtime_error_at line
+              (Printf.sprintf "Expected %d arguments but got %d." c.arity
+                 (List.length arg_vals))
+          else c.call arg_vals
+      | _ -> runtime_error_at line "Can only call functions and classes.")
   | Expr.Binary (e1, op, e2) -> (
       let v1 = eval env e1 in
       let v2 = eval env e2 in
@@ -97,4 +108,14 @@ let rec exec env = function
 
 let exec_program stmts =
   let env = Env.make () in
+  Env.define env "clock"
+    (Value.VCallable
+       {
+         arity = 0;
+         name = "clock";
+         call =
+           (fun _ ->
+             let t = Unix.gettimeofday () in
+             Value.VNum t);
+       });
   List.iter (exec env) stmts

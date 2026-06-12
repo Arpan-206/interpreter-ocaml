@@ -36,6 +36,30 @@ let rec parse_primary p =
       | _ -> parse_error p' "Expect ')' after expression.")
   | _ -> parse_error p "Expect expression."
 
+and parse_call p =
+  let p, expr = parse_primary p in
+  let rec loop p expr =
+    match current_tok p with
+    | Lexer.LEFT_PAREN ->
+        let p = advance p in
+        let rec parse_args p acc =
+          match current_tok p with
+          | Lexer.RIGHT_PAREN -> (advance p, List.rev acc)
+          | _ -> (
+              let p, arg = parse_expression p in
+              let acc = arg :: acc in
+              match current_tok p with
+              | Lexer.COMMA -> parse_args (advance p) acc
+              | Lexer.RIGHT_PAREN -> (advance p, List.rev acc)
+              | _ -> parse_error p "Expect ')' after arguments.")
+        in
+        let line = current_line p in
+        let p, args = parse_args p [] in
+        loop p (Expr.Call (expr, args, line))
+    | _ -> (p, expr)
+  in
+  loop p expr
+
 and parse_unary p =
   match current_tok p with
   | Lexer.BANG ->
@@ -44,7 +68,7 @@ and parse_unary p =
   | Lexer.MINUS ->
       let p', e = parse_unary (advance p) in
       (p', Expr.Unary (Expr.Negate, e))
-  | _ -> parse_primary p
+  | _ -> parse_call p
 
 and parse_factor p =
   let p', left = parse_unary p in

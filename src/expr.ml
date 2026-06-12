@@ -7,6 +7,7 @@ type t =
   | Assign of string * t * int (* name + value + line *)
   | Or of t * t
   | And of t * t
+  | Call of t * t list * int (* callee, args, line *)
 
 and literal =
   | LitBool of bool
@@ -85,4 +86,13 @@ let rec print = function
       print l;
       print_string " ";
       print r;
+      print_string ")"
+  | Call (callee, args, _) ->
+      print_string "(call ";
+      print callee;
+      List.iter
+        (fun a ->
+          print_string " ";
+          print a)
+        args;
       print_string ")"
