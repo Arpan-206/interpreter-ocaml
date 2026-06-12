@@ -12,3 +12,4 @@ type t =
   | Return of
       Expr.t
       option (* return <expr>?; — raises exception to unwind call stack *)
+  | ClassDecl of string * int (* class name { ... } line *)

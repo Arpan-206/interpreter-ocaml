@@ -8,10 +8,12 @@ type t =
   | VCallable of callable (* native function, e.g. clock() *)
   | VFun of
       callable (* user-defined function — same shape, printed differently *)
+  | VClass of lox_class (* class declaration *)
 
 (* Both native and user functions share this record.
    The call field is a closure that captures the environment at definition time. *)
 and callable = { arity : int; call : t list -> t; name : string }
+and lox_class = { class_name : string }
 
 (* Print a value to stdout in Lox format (no trailing newline) *)
 let print = function
@@ -25,3 +27,4 @@ let print = function
   | VString s -> print_string s
   | VCallable c -> print_string ("<native fn " ^ c.name ^ ">")
   | VFun f -> print_string ("<fn " ^ f.name ^ ">")
+  | VClass c -> print_string c.class_name

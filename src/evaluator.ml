@@ -168,6 +168,8 @@ let rec exec env = function
                   with Return v -> result := v);
                  !result);
            })
+  | Stmt.ClassDecl (name, _) ->
+      Env.define env name (Value.VClass { class_name = name })
 
 (* ── Program entry point ────────────────────────────────────────────────── *)
 

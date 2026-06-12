@@ -121,6 +121,9 @@ and resolve_stmt r = function
   | Stmt.While (cond, body) ->
       resolve_expr r cond;
       resolve_stmt r body
+  | Stmt.ClassDecl (name, line) ->
+      declare r name line;
+      define r name
 
 (* ── Public entry point ─────────────────────────────────────────────────── *)
 

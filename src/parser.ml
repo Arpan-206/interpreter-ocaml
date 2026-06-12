@@ -313,6 +313,25 @@ and parse_statement p =
       in
       let p, body = parse_statement p in
       (p, Stmt.While (condition, body))
+  | Lexer.CLASS -> (
+      let line = current_line p in
+      let p = advance p in
+      match current_tok p with
+      | Lexer.IDENTIFIER name ->
+          let p = advance p in
+          let p =
+            match current_tok p with
+            | Lexer.LEFT_BRACE -> advance p
+            | _ -> parse_error p "Expect '{' before class body."
+          in
+          (* For now: skip over the empty body *)
+          let p =
+            match current_tok p with
+            | Lexer.RIGHT_BRACE -> advance p
+            | _ -> parse_error p "Expect '}' after class body."
+          in
+          (p, Stmt.ClassDecl (name, line))
+      | _ -> parse_error p "Expect class name.")
   | Lexer.FOR ->
       (* Desugared into: Block [init; While (cond) Block [body; incr]] *)
       let p = advance p in
