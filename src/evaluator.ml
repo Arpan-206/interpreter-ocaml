@@ -6,6 +6,8 @@ let runtime_error_at line msg =
   Printf.eprintf "%s\n[line %d]\n" msg line;
   exit 70
 
+exception Return of Value.t
+
 let is_truthy = function Value.VNil -> false | Value.VBool b -> b | _ -> true
 
 let rec eval env = function
@@ -108,6 +110,9 @@ let rec exec env = function
       while is_truthy (eval env condition) do
         exec env body
       done
+  | Stmt.Return expr ->
+      let v = match expr with Some e -> eval env e | None -> Value.VNil in
+      raise (Return v)
   | Stmt.FunDecl (name, params, body) ->
       let closure = env in
       Env.define env name
@@ -119,8 +124,10 @@ let rec exec env = function
                (fun args ->
                  let fn_env = Env.make_child closure in
                  List.iter2 (Env.define fn_env) params args;
-                 List.iter (exec fn_env) body;
-                 Value.VNil);
+                 let result = ref Value.VNil in
+                 (try List.iter (exec fn_env) body
+                  with Return v -> result := v);
+                 !result);
            })
 
 let exec_program stmts =

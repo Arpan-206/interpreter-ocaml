@@ -185,6 +185,21 @@ and parse_declaration p =
           | Lexer.SEMICOLON -> (advance p'', Stmt.VarDecl (name, None))
           | _ -> parse_error p'' "Expect '=' or ';' after variable name.")
       | _ -> parse_error p' "Expect variable name.")
+  | Lexer.RETURN ->
+      let p = advance p in
+      let p, value =
+        match current_tok p with
+        | Lexer.SEMICOLON -> (advance p, None)
+        | _ ->
+            let p, e = parse_expression p in
+            let p =
+              match current_tok p with
+              | Lexer.SEMICOLON -> advance p
+              | _ -> parse_error p "Expect ';' after return value."
+            in
+            (p, Some e)
+      in
+      (p, Stmt.Return value)
   | Lexer.FUN -> (
       let p = advance p in
       match current_tok p with
