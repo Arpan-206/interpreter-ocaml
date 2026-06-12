@@ -79,6 +79,10 @@ let rec resolve_expr r = function
   | Expr.Assign (name, e, _, uid) ->
       resolve_expr r e;
       resolve_local r uid name
+  | Expr.Get (obj, _, _) -> resolve_expr r obj
+  | Expr.Set (obj, _, value, _) ->
+      resolve_expr r obj;
+      resolve_expr r value
 
 (* ── Statement resolution ───────────────────────────────────────────────── *)
 
@@ -124,7 +128,6 @@ and resolve_stmt r = function
   | Stmt.ClassDecl (name, line) ->
       declare r name line;
       define r name
-
 (* ── Public entry point ─────────────────────────────────────────────────── *)
 
 let resolve stmts =

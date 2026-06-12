@@ -26,8 +26,6 @@ let locals : (int, int) Hashtbl.t ref = ref (Hashtbl.create 0)
    in an enclosing scope of the closure. *)
 let global_env : Env.t option ref = ref None
 
-(* Look up a variable using the resolver's recorded depth, or fall back to the
-   global env for names the resolver didn't record (true globals). *)
 let lookup_var env name line uid =
   match Hashtbl.find_opt !locals uid with
   | Some depth -> (
@@ -59,6 +57,22 @@ let rec eval env = function
           | Ok () -> ()
           | Error msg -> runtime_error_at line msg));
       v
+  | Expr.Get (obj, name, line) -> (
+      match eval env obj with
+      | Value.VInstance inst -> (
+          match Hashtbl.find_opt inst.fields name with
+          | Some v -> v
+          | None ->
+              runtime_error_at line
+                (Printf.sprintf "Undefined property '%s'." name))
+      | _ -> runtime_error_at line "Only instances have properties.")
+  | Expr.Set (obj, name, value, line) -> (
+      match eval env obj with
+      | Value.VInstance inst ->
+          let v = eval env value in
+          Hashtbl.replace inst.fields name v;
+          v
+      | _ -> runtime_error_at line "Only instances have fields.")
   | Expr.Unary (op, e) -> (
       let v = eval env e in
       match (op, v) with
@@ -67,11 +81,9 @@ let rec eval env = function
       | Expr.Not, Value.VNil -> Value.VBool true
       | Expr.Not, _ -> Value.VBool false
       | Expr.Negate, _ -> runtime_error "Operand must be a number.")
-  (* Short-circuit or — returns the first truthy value, or the last value *)
   | Expr.Or (left, right) ->
       let v = eval env left in
       if is_truthy v then v else eval env right
-  (* Short-circuit and — returns the first falsy value, or the last value *)
   | Expr.And (left, right) ->
       let v = eval env left in
       if not (is_truthy v) then v else eval env right
@@ -83,7 +95,6 @@ let rec eval env = function
         | Value.VCallable c -> (c.arity, c.call)
         | Value.VFun f -> (f.arity, f.call)
         | Value.VClass c ->
-            (* Instantiate: arity 0 for now (no init method yet) *)
             ( 0,
               fun _ ->
                 Value.VInstance
@@ -156,8 +167,6 @@ let rec exec env = function
       let v = match expr with Some e -> eval env e | None -> Value.VNil in
       raise (Return v)
   | Stmt.FunDecl (name, params, body, _) ->
-      (* Capture the closure env at definition time — the resolver ensures
-         variable lookups inside the body jump to the correct scope depth *)
       let closure = env in
       Env.define env name
         (Value.VFun

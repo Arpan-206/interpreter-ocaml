@@ -67,6 +67,13 @@ and parse_call p =
         let line = current_line p in
         let p, args = parse_args p [] in
         loop p (Expr.Call (expr, args, line))
+    | Lexer.DOT -> (
+        let p = advance p in
+        match current_tok p with
+        | Lexer.IDENTIFIER name ->
+            let line = current_line p in
+            loop (advance p) (Expr.Get (expr, name, line))
+        | _ -> parse_error p "Expect property name after '.'.")
     | _ -> (p, expr)
   in
   loop p expr
@@ -174,6 +181,7 @@ and parse_assignment p =
       match expr with
       | Expr.Variable (name, line, _) ->
           (p'', Expr.Assign (name, value, line, Expr.fresh_id ()))
+      | Expr.Get (obj, name, line) -> (p'', Expr.Set (obj, name, value, line))
       | _ -> parse_error p' "Invalid assignment target.")
   | _ -> (p', expr)
 

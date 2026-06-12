@@ -23,6 +23,8 @@ type t =
   | Or of t * t (* short-circuit logical or *)
   | And of t * t (* short-circuit logical and *)
   | Call of t * t list * int (* callee, args, line *)
+  | Get of t * string * int (* object, property name, line *)
+  | Set of t * string * t * int (* object, property name, value, line *)
 
 and literal = LitBool of bool | LitNil | LitNum of float | LitStr of string
 
@@ -115,3 +117,13 @@ let rec print = function
           print a)
         args;
       print_string ")"
+  | Get (obj, name, _) ->
+      print obj;
+      print_string ".";
+      print_string name
+  | Set (obj, name, value, _) ->
+      print obj;
+      print_string ".";
+      print_string name;
+      print_string " = ";
+      print value
