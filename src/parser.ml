@@ -142,6 +142,27 @@ and parse_assignment p =
 
 and parse_expression p = parse_assignment p
 
+and parse_declaration p =
+  match current_tok p with
+  | Lexer.VAR -> (
+      let p' = advance p in
+      match current_tok p' with
+      | Lexer.IDENTIFIER name -> (
+          let p'' = advance p' in
+          match current_tok p'' with
+          | Lexer.EQUAL ->
+              let p''', init = parse_expression (advance p'') in
+              let p''' =
+                match current_tok p''' with
+                | Lexer.SEMICOLON -> advance p'''
+                | _ -> parse_error p''' "Expect ';' after variable declaration."
+              in
+              (p''', Stmt.VarDecl (name, Some init))
+          | Lexer.SEMICOLON -> (advance p'', Stmt.VarDecl (name, None))
+          | _ -> parse_error p'' "Expect '=' or ';' after variable name.")
+      | _ -> parse_error p' "Expect variable name.")
+  | _ -> parse_statement p
+
 and parse_statement p =
   match current_tok p with
   | Lexer.PRINT -> (
@@ -150,21 +171,6 @@ and parse_statement p =
       match current_tok p'' with
       | Lexer.SEMICOLON -> (advance p'', Stmt.Print expr)
       | _ -> parse_error p'' "Expect ';' after value.")
-  | Lexer.VAR -> (
-      let p' = advance p in
-      match current_tok p' with
-      | Lexer.IDENTIFIER name -> (
-          let p'' = advance p' in
-          match current_tok p'' with
-          | Lexer.EQUAL -> (
-              let p''', initializer_expr = parse_expression (advance p'') in
-              match current_tok p''' with
-              | Lexer.SEMICOLON ->
-                  (advance p''', Stmt.VarDecl (name, Some initializer_expr))
-              | _ -> parse_error p''' "Expect ';' after variable declaration.")
-          | Lexer.SEMICOLON -> (advance p'', Stmt.VarDecl (name, None))
-          | _ -> parse_error p'' "Expect '=' or ';' after variable name.")
-      | _ -> parse_error p' "Expect variable name.")
   | Lexer.LEFT_BRACE ->
       let rec parse_block p acc =
         match current_tok p with
@@ -223,7 +229,7 @@ and parse_statement p =
         match current_tok p with
         | Lexer.SEMICOLON -> (advance p, None)
         | Lexer.VAR ->
-            let p, s = parse_statement p in
+            let p, s = parse_declaration p in
             (p, Some s)
         | _ ->
             let p, e = parse_expression p in
@@ -284,7 +290,7 @@ let rec parse_program' p acc =
   match current_tok p with
   | Lexer.EOF -> List.rev acc
   | _ ->
-      let p', stmt = parse_statement p in
+      let p', stmt = parse_declaration p in
       parse_program' p' (stmt :: acc)
 
 let parse_program tokens = parse_program' (make tokens) []
