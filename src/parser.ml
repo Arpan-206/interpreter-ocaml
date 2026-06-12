@@ -331,6 +331,20 @@ and parse_statement p =
       match current_tok p with
       | Lexer.IDENTIFIER name ->
           let p = advance p in
+          let p, superclass =
+            match current_tok p with
+            | Lexer.LESS -> (
+                let p = advance p in
+                match current_tok p with
+                | Lexer.IDENTIFIER super_name ->
+                    let super_line = current_line p in
+                    ( advance p,
+                      Some
+                        (Expr.Variable (super_name, super_line, Expr.fresh_id ()))
+                    )
+                | _ -> parse_error p "Expect superclass name.")
+            | _ -> (p, None)
+          in
           let p =
             match current_tok p with
             | Lexer.LEFT_BRACE -> advance p
@@ -380,7 +394,7 @@ and parse_statement p =
             | _ -> parse_error p "Expect method name."
           in
           let p, methods = parse_methods p [] in
-          (p, Stmt.ClassDecl (name, methods, line))
+          (p, Stmt.ClassDecl (name, superclass, methods, line))
       | _ -> parse_error p "Expect class name.")
   | Lexer.FOR ->
       let p = advance p in

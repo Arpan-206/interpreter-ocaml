@@ -14,6 +14,14 @@ let is_truthy = function Value.VNil -> false | Value.VBool b -> b | _ -> true
 let locals : (int, int) Hashtbl.t ref = ref (Hashtbl.create 0)
 let global_env : Env.t option ref = ref None
 
+let rec find_method cls name =
+  match Hashtbl.find_opt cls.Value.methods name with
+  | Some id -> Some id
+  | None -> (
+      match cls.Value.superclass with
+      | Some super -> find_method super name
+      | None -> None)
+
 type lox_fun = {
   lf_arity : int;
   lf_name : string;
@@ -117,7 +125,7 @@ and eval env = function
           match Hashtbl.find_opt inst.fields name with
           | Some v -> v
           | None -> (
-              match Hashtbl.find_opt inst.instance_class.methods name with
+              match find_method inst.instance_class name with
               | Some method_id ->
                   let lf = Hashtbl.find fun_table method_id in
                   make_bound_method lf inst
@@ -164,7 +172,7 @@ and eval env = function
           else f.call arg_vals
       | Value.VClass c ->
           let init_arity =
-            match Hashtbl.find_opt c.methods "init" with
+            match find_method c "init" with
             | Some init_id ->
                 let lf = Hashtbl.find fun_table init_id in
                 lf.lf_arity
@@ -178,7 +186,7 @@ and eval env = function
             let inst =
               Value.{ instance_class = c; fields = Hashtbl.create 4 }
             in
-            (match Hashtbl.find_opt c.methods "init" with
+            (match find_method c "init" with
             | Some init_id ->
                 let lf = Hashtbl.find fun_table init_id in
                 ignore (call_fun lf (Some (Value.VInstance inst)) arg_vals)
@@ -255,7 +263,15 @@ and exec env = function
         }
       in
       Env.define env name (make_fun_callable lf)
-  | Stmt.ClassDecl (name, methods, _) ->
+  | Stmt.ClassDecl (name, superclass_expr, methods, _) ->
+      let superclass =
+        match superclass_expr with
+        | None -> None
+        | Some expr -> (
+            match eval env expr with
+            | Value.VClass c -> Some c
+            | _ -> runtime_error "Superclass must be a class.")
+      in
       let method_table = Hashtbl.create 8 in
       List.iter
         (function
@@ -275,7 +291,7 @@ and exec env = function
           | _ -> ())
         methods;
       Env.define env name
-        (Value.VClass { class_name = name; methods = method_table })
+        (Value.VClass { class_name = name; methods = method_table; superclass })
 
 let exec_program stmts =
   let env = Env.make () in

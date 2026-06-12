@@ -128,10 +128,18 @@ and resolve_stmt r = function
   | Stmt.While (cond, body) ->
       resolve_expr r cond;
       resolve_stmt r body
-  | Stmt.ClassDecl (name, methods, line) ->
+  | Stmt.ClassDecl (name, superclass, methods, line) ->
       declare r name line;
       define r name;
       r.class_depth <- r.class_depth + 1;
+      (match superclass with
+      | Some (Expr.Variable (super_name, super_line, _)) as sc -> (
+          if name = super_name then
+            resolve_error super_line super_name
+              "A class can't inherit from itself.";
+          match sc with Some e -> resolve_expr r e | None -> ())
+      | Some e -> resolve_expr r e
+      | None -> ());
       List.iter
         (function
           | Stmt.FunDecl (mname, params, body, mline) ->

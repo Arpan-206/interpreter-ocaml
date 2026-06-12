@@ -1,9 +1,6 @@
-class ThingDefault {
-  init() {
-    this.x = "foo";
-    this.y = 42;
-    return this;
-  }
-}
-var out = ThingDefault();
-print out;
+class Doughnut {}
+
+class BostonCream < Doughnut {}
+
+print Doughnut();
+print BostonCream();

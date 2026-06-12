@@ -11,7 +11,12 @@ type t =
   | VInstance of lox_instance
 
 and callable = { arity : int; call : t list -> t; name : string }
-and lox_class = { class_name : string; methods : (string, int) Hashtbl.t }
+
+and lox_class = {
+  class_name : string;
+  methods : (string, int) Hashtbl.t;
+  superclass : lox_class option;
+}
 
 and lox_instance = {
   instance_class : lox_class;
