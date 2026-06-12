@@ -5,6 +5,8 @@ type t =
   | Binary of t * binary_op * t
   | Variable of string * int (* name + line *)
   | Assign of string * t * int (* name + value + line *)
+  | Or of t * t
+  | And of t * t
 
 and literal =
   | LitBool of bool
@@ -72,3 +74,15 @@ let rec print = function
       print_string name;
       print_string " = ";
       print e
+  | Or (l, r) ->
+      print_string "(or ";
+      print l;
+      print_string " ";
+      print r;
+      print_string ")"
+  | And (l, r) ->
+      print_string "(and ";
+      print l;
+      print_string " ";
+      print r;
+      print_string ")"

@@ -108,8 +108,30 @@ and parse_equality p =
   in
   loop p' left
 
+and parse_and p =
+  let p, left = parse_equality p in
+  let rec loop p left =
+    match current_tok p with
+    | Lexer.AND ->
+        let p, right = parse_equality (advance p) in
+        loop p (Expr.And (left, right))
+    | _ -> (p, left)
+  in
+  loop p left
+
+and parse_or p =
+  let p, left = parse_and p in
+  let rec loop p left =
+    match current_tok p with
+    | Lexer.OR ->
+        let p, right = parse_and (advance p) in
+        loop p (Expr.Or (left, right))
+    | _ -> (p, left)
+  in
+  loop p left
+
 and parse_assignment p =
-  let p', expr = parse_equality p in
+  let p', expr = parse_or p in
   match current_tok p' with
   | Lexer.EQUAL -> (
       let p'', value = parse_assignment (advance p') in

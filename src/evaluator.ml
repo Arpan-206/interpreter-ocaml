@@ -31,6 +31,12 @@ let rec eval env = function
       | Expr.Not, Value.VNil -> Value.VBool true
       | Expr.Not, _ -> Value.VBool false
       | Expr.Negate, _ -> runtime_error "Operand must be a number.")
+  | Expr.Or (left, right) ->
+      let v = eval env left in
+      if is_truthy v then v else eval env right
+  | Expr.And (left, right) ->
+      let v = eval env left in
+      if not (is_truthy v) then v else eval env right
   | Expr.Binary (e1, op, e2) -> (
       let v1 = eval env e1 in
       let v2 = eval env e2 in
