@@ -3,4 +3,11 @@
 (executable
  (name main)
  (modules main lexer expr stmt parser value env evaluator)
- (libraries unix))
+ (libraries unix)
+ (ocamlopt_flags (:standard -O3 -unbox-closures)))
+
+(executable
+ (name bench)
+ (modules bench lexer expr stmt parser value env evaluator)
+ (libraries unix core_bench core_unix)
+ (ocamlopt_flags (:standard -O3 -unbox-closures)))

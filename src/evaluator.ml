@@ -6,6 +6,8 @@ let runtime_error_at line msg =
   Printf.eprintf "%s\n[line %d]\n" msg line;
   exit 70
 
+let is_truthy = function Value.VNil -> false | Value.VBool b -> b | _ -> true
+
 let rec eval env = function
   | Expr.Literal (Expr.LitBool b) -> Value.VBool b
   | Expr.Literal Expr.LitNil -> Value.VNil
@@ -78,6 +80,10 @@ let rec exec env = function
   | Stmt.Block stmts ->
       let child_env = Env.make_child env in
       List.iter (exec child_env) stmts
+  | Stmt.If (condition, then_branch, else_branch) -> (
+      let value = eval env condition in
+      if is_truthy value then exec env then_branch
+      else match else_branch with Some s -> exec env s | None -> ())
 
 let exec_program stmts =
   let env = Env.make () in

@@ -153,6 +153,28 @@ and parse_statement p =
             parse_block p' (stmt :: acc)
       in
       parse_block (advance p) []
+  | Lexer.IF ->
+      let p = advance p in
+      let p =
+        match current_tok p with
+        | Lexer.LEFT_PAREN -> advance p
+        | _ -> parse_error p "Expect '(' after 'if'."
+      in
+      let p, condition = parse_expression p in
+      let p =
+        match current_tok p with
+        | Lexer.RIGHT_PAREN -> advance p
+        | _ -> parse_error p "Expect ')' after if condition."
+      in
+      let p, then_branch = parse_statement p in
+      let p, else_branch =
+        match current_tok p with
+        | Lexer.ELSE ->
+            let p, s = parse_statement (advance p) in
+            (p, Some s)
+        | _ -> (p, None)
+      in
+      (p, Stmt.If (condition, then_branch, else_branch))
   | _ -> (
       let p', expr = parse_expression p in
       match current_tok p' with
