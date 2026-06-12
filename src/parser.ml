@@ -212,6 +212,68 @@ and parse_statement p =
       in
       let p, body = parse_statement p in
       (p, Stmt.While (condition, body))
+  | Lexer.FOR ->
+      let p = advance p in
+      let p =
+        match current_tok p with
+        | Lexer.LEFT_PAREN -> advance p
+        | _ -> parse_error p "Expect '(' after 'for'."
+      in
+      let p, init =
+        match current_tok p with
+        | Lexer.SEMICOLON -> (advance p, None)
+        | Lexer.VAR ->
+            let p, s = parse_statement p in
+            (p, Some s)
+        | _ ->
+            let p, e = parse_expression p in
+            let p =
+              match current_tok p with
+              | Lexer.SEMICOLON -> advance p
+              | _ -> parse_error p "Expect ';' after for initializer."
+            in
+            (p, Some (Stmt.Expression e))
+      in
+      let p, condition =
+        match current_tok p with
+        | Lexer.SEMICOLON -> (advance p, None)
+        | _ ->
+            let p, e = parse_expression p in
+            let p =
+              match current_tok p with
+              | Lexer.SEMICOLON -> advance p
+              | _ -> parse_error p "Expect ';' after loop condition."
+            in
+            (p, Some e)
+      in
+      let p, increment =
+        match current_tok p with
+        | Lexer.RIGHT_PAREN -> (advance p, None)
+        | _ ->
+            let p, e = parse_expression p in
+            let p =
+              match current_tok p with
+              | Lexer.RIGHT_PAREN -> advance p
+              | _ -> parse_error p "Expect ')' after for clauses."
+            in
+            (p, Some e)
+      in
+      let p, body = parse_statement p in
+      let body =
+        match increment with
+        | Some e -> Stmt.Block [ body; Stmt.Expression e ]
+        | None -> body
+      in
+      let cond =
+        match condition with
+        | Some e -> e
+        | None -> Expr.Literal (Expr.LitBool true)
+      in
+      let body = Stmt.While (cond, body) in
+      let body =
+        match init with Some s -> Stmt.Block [ s; body ] | None -> body
+      in
+      (p, body)
   | _ -> (
       let p', expr = parse_expression p in
       match current_tok p' with
