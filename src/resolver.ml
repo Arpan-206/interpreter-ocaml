@@ -8,19 +8,17 @@
    shadow the one it was supposed to capture. The resolver fixes the binding at
    parse/resolve time so the evaluator jumps to exactly the right scope. *)
 
-(* The output: uid → depth (0 = current scope, 1 = one level up, etc.) *)
 type locals = (int, int) Hashtbl.t
-
-(* One scope frame: variable name → has it been fully initialised yet?
-   false = declared but not yet defined (catches `var x = x;` style errors) *)
 type scope = (string, bool) Hashtbl.t
 
 type t = {
   locals : locals;
-  scopes : scope Stack.t; (* innermost scope is on top *)
+  scopes : scope Stack.t;
+  mutable function_depth : int; (* 0 = top-level, >0 = inside a function *)
 }
 
-let make_resolver () = { locals = Hashtbl.create 64; scopes = Stack.create () }
+let make_resolver () =
+  { locals = Hashtbl.create 64; scopes = Stack.create (); function_depth = 0 }
 
 (* ── Scope management ───────────────────────────────────────────────────── *)
 
@@ -31,8 +29,6 @@ let resolve_error line name msg =
   Printf.eprintf "[line %d] Error at '%s': %s\n" line name msg;
   exit 65
 
-(* Declare: name is known in this scope but not yet safe to read.
-   Errors if the name is already declared in this exact scope (duplicate local). *)
 let declare r name line =
   if not (Stack.is_empty r.scopes) then begin
     let scope = Stack.top r.scopes in
@@ -41,17 +37,12 @@ let declare r name line =
     Hashtbl.replace scope name false
   end
 
-(* Define: name is fully initialised and safe to read *)
 let define r name =
   if not (Stack.is_empty r.scopes) then
     Hashtbl.replace (Stack.top r.scopes) name true
 
 (* ── Core resolution ────────────────────────────────────────────────────── *)
 
-(* Walk scopes from innermost outward looking for `name`.
-   Record the hop count in locals under this node's uid.
-   If not found in any local scope → it's a global, leave it unrecorded
-   (the evaluator will fall back to the global env for globals). *)
 let resolve_local r uid name =
   let scopes = Stack.to_seq r.scopes |> Array.of_seq in
   let n = Array.length scopes in
@@ -78,7 +69,6 @@ let rec resolve_expr r = function
       resolve_expr r callee;
       List.iter (resolve_expr r) args
   | Expr.Variable (name, line, uid) ->
-      (* Guard: catch `var x = x;` where x is declared but not yet defined *)
       (if not (Stack.is_empty r.scopes) then
          match Hashtbl.find_opt (Stack.top r.scopes) name with
          | Some false ->
@@ -95,8 +85,13 @@ let rec resolve_expr r = function
 and resolve_stmt r = function
   | Stmt.Expression e -> resolve_expr r e
   | Stmt.Print e -> resolve_expr r e
-  | Stmt.Return (Some e) -> resolve_expr r e
-  | Stmt.Return None -> ()
+  | Stmt.Return (Some e) ->
+      if r.function_depth = 0 then
+        resolve_error 0 "return" "Can't return from top-level code.";
+      resolve_expr r e
+  | Stmt.Return None ->
+      if r.function_depth = 0 then
+        resolve_error 0 "return" "Can't return from top-level code."
   | Stmt.VarDecl (name, init, line) ->
       declare r name line;
       (match init with Some e -> resolve_expr r e | None -> ());
@@ -105,14 +100,15 @@ and resolve_stmt r = function
       declare r name line;
       define r name;
       begin_scope r;
-      (* Duplicate parameters are caught here — each param declared into
-         the same fresh scope, so the second `arg` sees the first already present *)
       List.iter
         (fun p ->
           declare r p line;
           define r p)
         params;
+      (* Increment depth for the body — return is valid here *)
+      r.function_depth <- r.function_depth + 1;
       List.iter (resolve_stmt r) body;
+      r.function_depth <- r.function_depth - 1;
       end_scope r
   | Stmt.Block stmts ->
       begin_scope r;
