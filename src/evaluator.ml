@@ -14,8 +14,6 @@ let is_truthy = function Value.VNil -> false | Value.VBool b -> b | _ -> true
 let locals : (int, int) Hashtbl.t ref = ref (Hashtbl.create 0)
 let global_env : Env.t option ref = ref None
 
-(* Local record for user-defined functions and methods.
-   Lives only in evaluator.ml — never stored in value.ml — so no cycle. *)
 type lox_fun = {
   lf_arity : int;
   lf_name : string;
@@ -25,7 +23,6 @@ type lox_fun = {
   lf_is_initializer : bool;
 }
 
-(* Global table: fun_id -> lox_fun. *)
 let fun_table : (int, lox_fun) Hashtbl.t = Hashtbl.create 32
 let next_fun_id = ref 0
 
@@ -47,13 +44,11 @@ let lookup_var env name line uid =
       | Ok v -> v
       | Error msg -> runtime_error_at line msg)
 
-let lookup_method_fun name =
-  Hashtbl.fold
-    (fun id lf acc -> if lf.lf_name = name then Some (id, lf) else acc)
-    fun_table None
-
-(* Execute a lox_fun, optionally with a pre-bound `this` value. *)
 let rec call_fun lf this_opt args =
+  if List.length args <> lf.lf_arity then
+    runtime_error
+      (Printf.sprintf "Expected %d arguments but got %d." lf.lf_arity
+         (List.length args));
   let fn_env = Env.make_child lf.lf_closure in
   (match this_opt with
   | Some inst -> Env.define fn_env "this" inst
@@ -74,7 +69,6 @@ let rec call_fun lf this_opt args =
      else result := v);
   !result
 
-(* Build a VFun callable for a plain function (no `this`). *)
 and make_fun_callable lf =
   let id = register_fun lf in
   Value.VFun
@@ -87,7 +81,6 @@ and make_fun_callable lf =
           call_fun lf None args);
     }
 
-(* Build a VFun callable for a method bound to a specific instance. *)
 and make_bound_method lf inst =
   let id = register_fun lf in
   Value.VFun
@@ -99,8 +92,6 @@ and make_bound_method lf inst =
           let lf = Hashtbl.find fun_table id in
           call_fun lf (Some (Value.VInstance inst)) args);
     }
-
-(* ── Expression evaluator ───────────────────────────────────────────────── *)
 
 and eval env = function
   | Expr.Literal (Expr.LitBool b) -> Value.VBool b
@@ -127,12 +118,9 @@ and eval env = function
           | Some v -> v
           | None -> (
               match Hashtbl.find_opt inst.instance_class.methods name with
-              | Some callable -> (
-                  match lookup_method_fun callable.Value.name with
-                  | Some (_, lf) -> make_bound_method lf inst
-                  | None ->
-                      runtime_error_at line
-                        (Printf.sprintf "Method '%s' has no fun record." name))
+              | Some method_id ->
+                  let lf = Hashtbl.find fun_table method_id in
+                  make_bound_method lf inst
               | None ->
                   runtime_error_at line
                     (Printf.sprintf "Undefined property '%s'." name)))
@@ -177,7 +165,9 @@ and eval env = function
       | Value.VClass c ->
           let init_arity =
             match Hashtbl.find_opt c.methods "init" with
-            | Some init_callable -> init_callable.Value.arity
+            | Some init_id ->
+                let lf = Hashtbl.find fun_table init_id in
+                lf.lf_arity
             | None -> 0
           in
           if List.length arg_vals <> init_arity then
@@ -189,13 +179,9 @@ and eval env = function
               Value.{ instance_class = c; fields = Hashtbl.create 4 }
             in
             (match Hashtbl.find_opt c.methods "init" with
-            | Some _ -> (
-                match lookup_method_fun "init" with
-                | Some (_, lf) ->
-                    ignore (call_fun lf (Some (Value.VInstance inst)) arg_vals)
-                | None ->
-                    runtime_error_at line
-                      "Initializer 'init' has no function record.")
+            | Some init_id ->
+                let lf = Hashtbl.find fun_table init_id in
+                ignore (call_fun lf (Some (Value.VInstance inst)) arg_vals)
             | None -> ());
             Value.VInstance inst
       | _ -> runtime_error_at line "Can only call functions and classes.")
@@ -234,8 +220,6 @@ and eval env = function
           | Expr.NOT_EQUAL -> Value.VBool (not eq)
           | _ -> assert false)
       | _ -> runtime_error "Operands must be two numbers or two strings.")
-
-(* ── Statement executor ─────────────────────────────────────────────────── *)
 
 and exec env = function
   | Stmt.Print expr ->
@@ -276,7 +260,6 @@ and exec env = function
       List.iter
         (function
           | Stmt.FunDecl (mname, params, body, _) ->
-              let is_init = mname = "init" in
               let lf =
                 {
                   lf_arity = List.length params;
@@ -284,25 +267,15 @@ and exec env = function
                   lf_params = params;
                   lf_body = body;
                   lf_closure = env;
-                  lf_is_initializer = is_init;
+                  lf_is_initializer = mname = "init";
                 }
               in
               let id = register_fun lf in
-              Hashtbl.replace method_table mname
-                {
-                  Value.arity = lf.lf_arity;
-                  name = mname;
-                  call =
-                    (fun args ->
-                      let lf = Hashtbl.find fun_table id in
-                      call_fun lf None args);
-                }
+              Hashtbl.replace method_table mname id
           | _ -> ())
         methods;
       Env.define env name
         (Value.VClass { class_name = name; methods = method_table })
-
-(* ── Program entry point ────────────────────────────────────────────────── *)
 
 let exec_program stmts =
   let env = Env.make () in
