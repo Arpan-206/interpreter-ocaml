@@ -1,32 +1,23 @@
-(* resolver.ml — static variable resolution pass (runs before evaluation).
-   Walks the entire AST and records, for each Variable and Assign expression,
-   how many scope levels up their binding lives. This number (the "depth") is
-   stored in a side table keyed by each node's unique uid.
-
-   Why this is needed: without it, a closure always searches the live environment
-   chain at call time, so a new variable declared after the closure is defined can
-   shadow the one it was supposed to capture. The resolver fixes the binding at
-   parse/resolve time so the evaluator jumps to exactly the right scope. *)
+(* resolver.ml — static variable resolution pass (runs before evaluation). *)
 
 type locals = (int, int) Hashtbl.t
 type scope = (string, bool) Hashtbl.t
+type function_kind = NoFunction | Function | Method | Initializer
 
 type t = {
   locals : locals;
   scopes : scope Stack.t;
-  mutable function_depth : int; (* 0 = top-level, >0 = inside a function *)
-  mutable class_depth : int; (* 0 = outside class, >0 = inside class method *)
+  mutable current_function : function_kind;
+  mutable class_depth : int;
 }
 
 let make_resolver () =
   {
     locals = Hashtbl.create 64;
     scopes = Stack.create ();
-    function_depth = 0;
+    current_function = NoFunction;
     class_depth = 0;
   }
-
-(* ── Scope management ───────────────────────────────────────────────────── *)
 
 let begin_scope r = Stack.push (Hashtbl.create 8) r.scopes
 let end_scope r = ignore (Stack.pop r.scopes)
@@ -47,8 +38,6 @@ let define r name =
   if not (Stack.is_empty r.scopes) then
     Hashtbl.replace (Stack.top r.scopes) name true
 
-(* ── Core resolution ────────────────────────────────────────────────────── *)
-
 let resolve_local r uid name =
   let scopes = Stack.to_seq r.scopes |> Array.of_seq in
   let n = Array.length scopes in
@@ -59,7 +48,18 @@ let resolve_local r uid name =
   in
   loop 0
 
-(* ── Expression resolution ──────────────────────────────────────────────── *)
+let resolve_function r kind params body line =
+  let enclosing = r.current_function in
+  r.current_function <- kind;
+  begin_scope r;
+  List.iter
+    (fun p ->
+      declare r p line;
+      define r p)
+    params;
+  List.iter (resolve_stmt r) body;
+  end_scope r;
+  r.current_function <- enclosing
 
 let rec resolve_expr r = function
   | Expr.Literal _ -> ()
@@ -94,17 +94,17 @@ let rec resolve_expr r = function
         resolve_error line "this" "Can't use 'this' outside of a class.";
       resolve_local r uid "this"
 
-(* ── Statement resolution ───────────────────────────────────────────────── *)
-
 and resolve_stmt r = function
   | Stmt.Expression e -> resolve_expr r e
   | Stmt.Print e -> resolve_expr r e
   | Stmt.Return (Some e) ->
-      if r.function_depth = 0 then
+      if r.current_function = NoFunction then
         resolve_error 0 "return" "Can't return from top-level code.";
+      if r.current_function = Initializer then
+        resolve_error 0 "return" "Can't return a value from an initializer.";
       resolve_expr r e
   | Stmt.Return None ->
-      if r.function_depth = 0 then
+      if r.current_function = NoFunction then
         resolve_error 0 "return" "Can't return from top-level code."
   | Stmt.VarDecl (name, init, line) ->
       declare r name line;
@@ -113,17 +113,7 @@ and resolve_stmt r = function
   | Stmt.FunDecl (name, params, body, line) ->
       declare r name line;
       define r name;
-      begin_scope r;
-      List.iter
-        (fun p ->
-          declare r p line;
-          define r p)
-        params;
-      (* Increment depth for the body — return is valid here *)
-      r.function_depth <- r.function_depth + 1;
-      List.iter (resolve_stmt r) body;
-      r.function_depth <- r.function_depth - 1;
-      end_scope r
+      resolve_function r Function params body line
   | Stmt.Block stmts ->
       begin_scope r;
       List.iter (resolve_stmt r) stmts;
@@ -141,23 +131,23 @@ and resolve_stmt r = function
       r.class_depth <- r.class_depth + 1;
       List.iter
         (function
-          | Stmt.FunDecl (_, params, body, mline) ->
+          | Stmt.FunDecl (mname, params, body, mline) ->
               begin_scope r;
               Hashtbl.replace (Stack.top r.scopes) "this" true;
-              r.function_depth <- r.function_depth + 1;
+              let kind = if mname = "init" then Initializer else Method in
+              let enclosing = r.current_function in
+              r.current_function <- kind;
               List.iter
                 (fun p ->
                   declare r p mline;
                   define r p)
                 params;
               List.iter (resolve_stmt r) body;
-              r.function_depth <- r.function_depth - 1;
+              r.current_function <- enclosing;
               end_scope r
           | _ -> ())
         methods;
       r.class_depth <- r.class_depth - 1
-
-(* ── Public entry point ─────────────────────────────────────────────────── *)
 
 let resolve stmts =
   let r = make_resolver () in
