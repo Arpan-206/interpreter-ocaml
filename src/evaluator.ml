@@ -22,11 +22,10 @@ type lox_fun = {
   lf_params : string list;
   lf_body : Stmt.t list;
   lf_closure : Env.t;
+  lf_is_initializer : bool;
 }
 
-(* Global table: fun_id -> lox_fun.
-   VFun callables carry a closure over the fun_id so we can retrieve
-   params/body/closure at call time and inject `this` if needed. *)
+(* Global table: fun_id -> lox_fun. *)
 let fun_table : (int, lox_fun) Hashtbl.t = Hashtbl.create 32
 let next_fun_id = ref 0
 
@@ -48,6 +47,11 @@ let lookup_var env name line uid =
       | Ok v -> v
       | Error msg -> runtime_error_at line msg)
 
+let lookup_method_fun name =
+  Hashtbl.fold
+    (fun id lf acc -> if lf.lf_name = name then Some (id, lf) else acc)
+    fun_table None
+
 (* Execute a lox_fun, optionally with a pre-bound `this` value. *)
 let rec call_fun lf this_opt args =
   let fn_env = Env.make_child lf.lf_closure in
@@ -56,7 +60,18 @@ let rec call_fun lf this_opt args =
   | None -> ());
   List.iter2 (Env.define fn_env) lf.lf_params args;
   let result = ref Value.VNil in
-  (try List.iter (exec fn_env) lf.lf_body with Return v -> result := v);
+  (try
+     List.iter (exec fn_env) lf.lf_body;
+     if lf.lf_is_initializer then
+       match this_opt with
+       | Some inst -> result := inst
+       | None -> runtime_error "Initializer called without `this`."
+   with Return v ->
+     if lf.lf_is_initializer then
+       match this_opt with
+       | Some inst -> result := inst
+       | None -> runtime_error "Initializer called without `this`."
+     else result := v);
   !result
 
 (* Build a VFun callable for a plain function (no `this`). *)
@@ -113,20 +128,9 @@ and eval env = function
           | None -> (
               match Hashtbl.find_opt inst.instance_class.methods name with
               | Some callable -> (
-                  (* Re-look up the lox_fun by scanning the fun_table for
-                     the matching name and closure — we stored it at class
-                     declaration time. Use the id captured in the callable. *)
-                  match
-                    Hashtbl.fold
-                      (fun id lf acc ->
-                        if lf.lf_name = callable.Value.name then Some (id, lf)
-                        else acc)
-                      fun_table None
-                  with
+                  match lookup_method_fun callable.Value.name with
                   | Some (_, lf) -> make_bound_method lf inst
                   | None ->
-                      (* Fallback: shouldn't happen if class was declared
-                         via Stmt.ClassDecl, but handle gracefully *)
                       runtime_error_at line
                         (Printf.sprintf "Method '%s' has no fun record." name))
               | None ->
@@ -154,25 +158,47 @@ and eval env = function
   | Expr.And (left, right) ->
       let v = eval env left in
       if not (is_truthy v) then v else eval env right
-  | Expr.Call (callee, args, line) ->
+  | Expr.Call (callee, args, line) -> (
       let fn = eval env callee in
       let arg_vals = List.map (eval env) args in
-      let arity, call =
-        match fn with
-        | Value.VCallable c -> (c.arity, c.call)
-        | Value.VFun f -> (f.arity, f.call)
-        | Value.VClass c ->
-            ( 0,
-              fun _ ->
-                Value.VInstance
-                  { instance_class = c; fields = Hashtbl.create 4 } )
-        | _ -> runtime_error_at line "Can only call functions and classes."
-      in
-      if List.length arg_vals <> arity then
-        runtime_error_at line
-          (Printf.sprintf "Expected %d arguments but got %d." arity
-             (List.length arg_vals))
-      else call arg_vals
+      match fn with
+      | Value.VCallable c ->
+          if List.length arg_vals <> c.arity then
+            runtime_error_at line
+              (Printf.sprintf "Expected %d arguments but got %d." c.arity
+                 (List.length arg_vals))
+          else c.call arg_vals
+      | Value.VFun f ->
+          if List.length arg_vals <> f.arity then
+            runtime_error_at line
+              (Printf.sprintf "Expected %d arguments but got %d." f.arity
+                 (List.length arg_vals))
+          else f.call arg_vals
+      | Value.VClass c ->
+          let init_arity =
+            match Hashtbl.find_opt c.methods "init" with
+            | Some init_callable -> init_callable.Value.arity
+            | None -> 0
+          in
+          if List.length arg_vals <> init_arity then
+            runtime_error_at line
+              (Printf.sprintf "Expected %d arguments but got %d." init_arity
+                 (List.length arg_vals))
+          else
+            let inst =
+              Value.{ instance_class = c; fields = Hashtbl.create 4 }
+            in
+            (match Hashtbl.find_opt c.methods "init" with
+            | Some _ -> (
+                match lookup_method_fun "init" with
+                | Some (_, lf) ->
+                    ignore (call_fun lf (Some (Value.VInstance inst)) arg_vals)
+                | None ->
+                    runtime_error_at line
+                      "Initializer 'init' has no function record.")
+            | None -> ());
+            Value.VInstance inst
+      | _ -> runtime_error_at line "Can only call functions and classes.")
   | Expr.Binary (e1, op, e2) -> (
       let v1 = eval env e1 in
       let v2 = eval env e2 in
@@ -241,18 +267,16 @@ and exec env = function
           lf_params = params;
           lf_body = body;
           lf_closure = env;
+          lf_is_initializer = false;
         }
       in
       Env.define env name (make_fun_callable lf)
   | Stmt.ClassDecl (name, methods, _) ->
       let method_table = Hashtbl.create 8 in
-      (* For each method, register a lox_fun in fun_table and store a
-         placeholder callable in method_table. The real binding happens in
-         Expr.Get where we look up the lox_fun by name and build a bound
-         method with `this` injected. *)
       List.iter
         (function
           | Stmt.FunDecl (mname, params, body, _) ->
+              let is_init = mname = "init" in
               let lf =
                 {
                   lf_arity = List.length params;
@@ -260,6 +284,7 @@ and exec env = function
                   lf_params = params;
                   lf_body = body;
                   lf_closure = env;
+                  lf_is_initializer = is_init;
                 }
               in
               let id = register_fun lf in
