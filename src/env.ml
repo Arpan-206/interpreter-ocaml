@@ -35,3 +35,19 @@ let rec assign env name value =
     match env.parent with
     | Some p -> assign p name value
     | None -> Error (Printf.sprintf "Undefined variable '%s'." name)
+
+(* Walk exactly n levels up the parent chain.
+   Used by the resolver-aware lookup — depth 0 = current env, 1 = parent, etc.
+   Panics if the chain is shorter than n (indicates a resolver bug). *)
+let rec ancestor env n =
+  if n = 0 then env
+  else
+    match env.parent with
+    | Some p -> ancestor p (n - 1)
+    | None -> failwith "Resolver scope depth mismatch"
+
+(* Look up a variable at a known scope depth — bypasses the full chain walk *)
+let get_at env n name = Hashtbl.find_opt (ancestor env n).vars name
+
+(* Assign a variable at a known scope depth — writes directly to the defining scope *)
+let assign_at env n name v = Hashtbl.replace (ancestor env n).vars name v

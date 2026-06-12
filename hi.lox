@@ -1,2 +1,13 @@
-fun foo() { return 10; }
-print foo();
+var variable = "global";
+
+{
+  fun f() {
+    print variable;
+  }
+
+  f();
+
+  var variable = "local";
+
+  f();
+}

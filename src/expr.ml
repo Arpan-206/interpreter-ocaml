@@ -1,5 +1,16 @@
 (* expr.ml — AST node types for Lox expressions *)
 
+(* ── Unique ID counter ───────────────────────────────────────────────────── *)
+
+(* Each Variable and Assign node gets a unique integer ID at parse time.
+   The resolver uses these IDs as keys into the locals table (uid → depth),
+   so two uses of the same variable name can be distinguished from each other. *)
+let next_id = ref 0
+
+let fresh_id () =
+  incr next_id;
+  !next_id
+
 (* ── AST types ───────────────────────────────────────────────────────────── *)
 
 type t =
@@ -7,8 +18,8 @@ type t =
   | Grouping of t (* parenthesised expression *)
   | Unary of unary_op * t
   | Binary of t * binary_op * t
-  | Variable of string * int (* name, line — for runtime error reporting *)
-  | Assign of string * t * int (* name, value, line *)
+  | Variable of string * int * int (* name, line, uid *)
+  | Assign of string * t * int * int (* name, value, line, uid *)
   | Or of t * t (* short-circuit logical or *)
   | And of t * t (* short-circuit logical and *)
   | Call of t * t list * int (* callee, args, line *)
@@ -78,8 +89,8 @@ let rec print = function
       print_string " ";
       print r;
       print_string ")"
-  | Variable (name, _) -> print_string name
-  | Assign (name, e, _) ->
+  | Variable (name, _, _) -> print_string name (* uid is internal only *)
+  | Assign (name, e, _, _) ->
       print_string name;
       print_string " = ";
       print e

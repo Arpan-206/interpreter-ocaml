@@ -10,7 +10,6 @@ type parser = { tokens : (Lexer.token * int) array; pos : int }
 
 let make tokens = { tokens; pos = 0 }
 
-(* Returns the current (token, line) pair, or (EOF, 0) past the end *)
 let current { tokens; pos } =
   if pos >= Array.length tokens then (Lexer.EOF, 0) else tokens.(pos)
 
@@ -18,7 +17,6 @@ let current_tok p = fst (current p)
 let current_line p = snd (current p)
 let advance p = { p with pos = p.pos + 1 }
 
-(* Emit a parse error to stderr and exit with code 65 *)
 let parse_error p msg =
   let line = current_line p in
   let location =
@@ -31,7 +29,6 @@ let parse_error p msg =
 
 (* ── Expression parsing ─────────────────────────────────────────────────── *)
 
-(* Literals, identifiers, grouped expressions — highest precedence *)
 let rec parse_primary p =
   match current_tok p with
   | Lexer.TRUE -> (advance p, Expr.Literal (Expr.LitBool true))
@@ -41,7 +38,7 @@ let rec parse_primary p =
   | Lexer.STRING s -> (advance p, Expr.Literal (Expr.LitStr s))
   | Lexer.IDENTIFIER name ->
       let line = current_line p in
-      (advance p, Expr.Variable (name, line))
+      (advance p, Expr.Variable (name, line, Expr.fresh_id ()))
   | Lexer.LEFT_PAREN -> (
       let p', expr = parse_expression (advance p) in
       match current_tok p' with
@@ -49,14 +46,13 @@ let rec parse_primary p =
       | _ -> parse_error p' "Expect ')' after expression.")
   | _ -> parse_error p "Expect expression."
 
-(* Function call — foo(), foo(a, b). Left-associative suffix after primary *)
+(* Function call — left-associative suffix after primary *)
 and parse_call p =
   let p, expr = parse_primary p in
   let rec loop p expr =
     match current_tok p with
     | Lexer.LEFT_PAREN ->
         let p = advance p in
-        (* Parse comma-separated argument list *)
         let rec parse_args p acc =
           match current_tok p with
           | Lexer.RIGHT_PAREN -> (advance p, List.rev acc)
@@ -75,7 +71,6 @@ and parse_call p =
   in
   loop p expr
 
-(* Unary: !, - *)
 and parse_unary p =
   match current_tok p with
   | Lexer.BANG ->
@@ -86,7 +81,6 @@ and parse_unary p =
       (p', Expr.Unary (Expr.Negate, e))
   | _ -> parse_call p
 
-(* Binary: *, / *)
 and parse_factor p =
   let p', left = parse_unary p in
   let rec loop p left =
@@ -101,7 +95,6 @@ and parse_factor p =
   in
   loop p' left
 
-(* Binary: +, - *)
 and parse_term p =
   let p', left = parse_factor p in
   let rec loop p left =
@@ -116,7 +109,6 @@ and parse_term p =
   in
   loop p' left
 
-(* Binary: >, >=, <, <= *)
 and parse_comparison p =
   let p', left = parse_term p in
   let rec loop p left =
@@ -137,7 +129,6 @@ and parse_comparison p =
   in
   loop p' left
 
-(* Binary: ==, != *)
 and parse_equality p =
   let p', left = parse_comparison p in
   let rec loop p left =
@@ -152,7 +143,6 @@ and parse_equality p =
   in
   loop p' left
 
-(* Logical and — short-circuits, returns the deciding value not a bool *)
 and parse_and p =
   let p, left = parse_equality p in
   let rec loop p left =
@@ -164,7 +154,6 @@ and parse_and p =
   in
   loop p left
 
-(* Logical or — short-circuits, returns the deciding value not a bool *)
 and parse_or p =
   let p, left = parse_and p in
   let rec loop p left =
@@ -176,14 +165,16 @@ and parse_or p =
   in
   loop p left
 
-(* Assignment — right-associative, target must be a variable *)
+(* Assignment — right-associative, target must be a variable.
+   Generates a fresh uid for the Assign node so the resolver can identify it. *)
 and parse_assignment p =
   let p', expr = parse_or p in
   match current_tok p' with
   | Lexer.EQUAL -> (
       let p'', value = parse_assignment (advance p') in
       match expr with
-      | Expr.Variable (name, line) -> (p'', Expr.Assign (name, value, line))
+      | Expr.Variable (name, line, _) ->
+          (p'', Expr.Assign (name, value, line, Expr.fresh_id ()))
       | _ -> parse_error p' "Invalid assignment target.")
   | _ -> (p', expr)
 
@@ -191,8 +182,6 @@ and parse_expression p = parse_assignment p
 
 (* ── Statement parsing ──────────────────────────────────────────────────── *)
 
-(* Declarations: var and fun are allowed at top-level and inside blocks,
-   but NOT as direct loop/if bodies. Everything else delegates to parse_statement. *)
 and parse_declaration p =
   match current_tok p with
   | Lexer.VAR -> (
@@ -202,7 +191,6 @@ and parse_declaration p =
           let p'' = advance p' in
           match current_tok p'' with
           | Lexer.EQUAL ->
-              (* var x = <expr>; *)
               let p''', init = parse_expression (advance p'') in
               let p''' =
                 match current_tok p''' with
@@ -210,13 +198,10 @@ and parse_declaration p =
                 | _ -> parse_error p''' "Expect ';' after variable declaration."
               in
               (p''', Stmt.VarDecl (name, Some init))
-          | Lexer.SEMICOLON ->
-              (* var x; — implicitly initialised to nil *)
-              (advance p'', Stmt.VarDecl (name, None))
+          | Lexer.SEMICOLON -> (advance p'', Stmt.VarDecl (name, None))
           | _ -> parse_error p'' "Expect '=' or ';' after variable name.")
       | _ -> parse_error p' "Expect variable name.")
   | Lexer.FUN -> (
-      (* fun name(params) { body } *)
       let p = advance p in
       match current_tok p with
       | Lexer.IDENTIFIER name ->
@@ -226,7 +211,6 @@ and parse_declaration p =
             | Lexer.LEFT_PAREN -> advance p
             | _ -> parse_error p "Expect '(' after function name."
           in
-          (* Parse parameter list *)
           let rec parse_params p acc =
             match current_tok p with
             | Lexer.RIGHT_PAREN -> (advance p, List.rev acc)
@@ -245,7 +229,6 @@ and parse_declaration p =
             | Lexer.LEFT_BRACE -> advance p
             | _ -> parse_error p "Expect '{' before function body."
           in
-          (* Parse function body as a list of declarations *)
           let rec parse_body p acc =
             match current_tok p with
             | Lexer.RIGHT_BRACE -> (advance p, List.rev acc)
@@ -259,8 +242,6 @@ and parse_declaration p =
       | _ -> parse_error p "Expect function name.")
   | _ -> parse_statement p
 
-(* Statements — no var/fun declarations allowed directly here.
-   Used for loop bodies, if branches, etc. *)
 and parse_statement p =
   match current_tok p with
   | Lexer.PRINT -> (
@@ -270,7 +251,6 @@ and parse_statement p =
       | Lexer.SEMICOLON -> (advance p'', Stmt.Print expr)
       | _ -> parse_error p'' "Expect ';' after value.")
   | Lexer.RETURN ->
-      (* return <expr>?; — value is optional (bare return yields nil) *)
       let p = advance p in
       let p, value =
         match current_tok p with
@@ -286,7 +266,6 @@ and parse_statement p =
       in
       (p, Stmt.Return value)
   | Lexer.LEFT_BRACE ->
-      (* Block — opens a new scope; contents may be full declarations *)
       let rec parse_block p acc =
         match current_tok p with
         | Lexer.RIGHT_BRACE -> (advance p, Stmt.Block (List.rev acc))
@@ -297,7 +276,6 @@ and parse_statement p =
       in
       parse_block (advance p) []
   | Lexer.IF ->
-      (* if (<cond>) <then> (else <else>)? *)
       let p = advance p in
       let p =
         match current_tok p with
@@ -311,7 +289,6 @@ and parse_statement p =
         | _ -> parse_error p "Expect ')' after if condition."
       in
       let p, then_branch = parse_statement p in
-      (* Else binds to the nearest if (dangling-else resolved greedily) *)
       let p, else_branch =
         match current_tok p with
         | Lexer.ELSE ->
@@ -336,15 +313,13 @@ and parse_statement p =
       let p, body = parse_statement p in
       (p, Stmt.While (condition, body))
   | Lexer.FOR ->
-      (* for (<init>?; <cond>?; <incr>?) <body>
-         Desugared into: Block [init; While (cond) Block [body; incr]] *)
+      (* Desugared into: Block [init; While (cond) Block [body; incr]] *)
       let p = advance p in
       let p =
         match current_tok p with
         | Lexer.LEFT_PAREN -> advance p
         | _ -> parse_error p "Expect '(' after 'for'."
       in
-      (* Initialiser clause: var decl, expression statement, or empty *)
       let p, init =
         match current_tok p with
         | Lexer.SEMICOLON -> (advance p, None)
@@ -360,7 +335,6 @@ and parse_statement p =
             in
             (p, Some (Stmt.Expression e))
       in
-      (* Condition clause: expression or empty (→ true, infinite loop) *)
       let p, condition =
         match current_tok p with
         | Lexer.SEMICOLON -> (advance p, None)
@@ -373,7 +347,6 @@ and parse_statement p =
             in
             (p, Some e)
       in
-      (* Increment clause: expression or empty *)
       let p, increment =
         match current_tok p with
         | Lexer.RIGHT_PAREN -> (advance p, None)
@@ -387,26 +360,22 @@ and parse_statement p =
             (p, Some e)
       in
       let p, body = parse_statement p in
-      (* Append increment to end of body *)
       let body =
         match increment with
         | Some e -> Stmt.Block [ body; Stmt.Expression e ]
         | None -> body
       in
-      (* Wrap body in while loop *)
       let cond =
         match condition with
         | Some e -> e
         | None -> Expr.Literal (Expr.LitBool true)
       in
       let body = Stmt.While (cond, body) in
-      (* Wrap in block with initialiser *)
       let body =
         match init with Some s -> Stmt.Block [ s; body ] | None -> body
       in
       (p, body)
   | _ -> (
-      (* Expression statement — must be followed by semicolon *)
       let p', expr = parse_expression p in
       match current_tok p' with
       | Lexer.SEMICOLON -> (advance p', Stmt.Expression expr)

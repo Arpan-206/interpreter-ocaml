@@ -35,6 +35,8 @@ let () =
   | "run" ->
       let tokens = Lexer.tokenize file_contents in
       let stmts = Parser.parse_program tokens in
+      let resolved = Resolver.resolve stmts in
+      Evaluator.locals := resolved;
       Evaluator.exec_program stmts
   | _ ->
       Printf.eprintf "Unknown command: %s\n" command;
