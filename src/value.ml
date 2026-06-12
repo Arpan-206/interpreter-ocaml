@@ -5,14 +5,11 @@ type t =
   | VNil
   | VNum of float
   | VString of string
-  | VCallable of callable (* native function, e.g. clock() *)
-  | VFun of
-      callable (* user-defined function — same shape, printed differently *)
-  | VClass of lox_class (* class declaration *)
-  | VInstance of lox_instance (* class instance *)
+  | VCallable of callable
+  | VFun of callable
+  | VClass of lox_class
+  | VInstance of lox_instance
 
-(* Both native and user functions share this record.
-   The call field is a closure that captures the environment at definition time. *)
 and callable = { arity : int; call : t list -> t; name : string }
 and lox_class = { class_name : string; methods : (string, callable) Hashtbl.t }
 
@@ -21,13 +18,11 @@ and lox_instance = {
   fields : (string, t) Hashtbl.t;
 }
 
-(* Print a value to stdout in Lox format (no trailing newline) *)
 let print = function
   | VBool true -> print_string "true"
   | VBool false -> print_string "false"
   | VNil -> print_string "nil"
   | VNum f ->
-      (* Integer-valued floats print without decimal point: 1.0 → "1" *)
       if Float.is_integer f then print_string (string_of_int (int_of_float f))
       else print_string (string_of_float f)
   | VString s -> print_string s

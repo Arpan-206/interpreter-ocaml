@@ -1,7 +1,4 @@
-(* evaluator.ml — tree-walk interpreter for Lox
-   Walks the AST produced by Parser, evaluating expressions and executing statements.
-   Environments are chained hash tables (child → parent) for lexical scoping.
-   A separate resolver pass populates `locals` before execution begins. *)
+(* evaluator.ml — tree-walk interpreter for Lox *)
 
 let runtime_error msg =
   Printf.eprintf "%s\n" msg;
@@ -14,17 +11,30 @@ let runtime_error_at line msg =
 exception Return of Value.t
 
 let is_truthy = function Value.VNil -> false | Value.VBool b -> b | _ -> true
-
-(* Populated by the resolver before exec_program is called.
-   Maps each Variable/Assign node's uid → scope depth (hops to defining env). *)
 let locals : (int, int) Hashtbl.t ref = ref (Hashtbl.create 0)
-
-(* Set once in exec_program to the top-level global environment.
-   Used by lookup_var / Assign when a variable has no resolver entry (i.e. it is
-   a true global), so we bypass the live closure chain and always read/write the
-   correct global binding — even when a same-named block-local exists at runtime
-   in an enclosing scope of the closure. *)
 let global_env : Env.t option ref = ref None
+
+(* Local record for user-defined functions and methods.
+   Lives only in evaluator.ml — never stored in value.ml — so no cycle. *)
+type lox_fun = {
+  lf_arity : int;
+  lf_name : string;
+  lf_params : string list;
+  lf_body : Stmt.t list;
+  lf_closure : Env.t;
+}
+
+(* Global table: fun_id -> lox_fun.
+   VFun callables carry a closure over the fun_id so we can retrieve
+   params/body/closure at call time and inject `this` if needed. *)
+let fun_table : (int, lox_fun) Hashtbl.t = Hashtbl.create 32
+let next_fun_id = ref 0
+
+let register_fun lf =
+  incr next_fun_id;
+  let id = !next_fun_id in
+  Hashtbl.replace fun_table id lf;
+  id
 
 let lookup_var env name line uid =
   match Hashtbl.find_opt !locals uid with
@@ -38,15 +48,53 @@ let lookup_var env name line uid =
       | Ok v -> v
       | Error msg -> runtime_error_at line msg)
 
+(* Execute a lox_fun, optionally with a pre-bound `this` value. *)
+let rec call_fun lf this_opt args =
+  let fn_env = Env.make_child lf.lf_closure in
+  (match this_opt with
+  | Some inst -> Env.define fn_env "this" inst
+  | None -> ());
+  List.iter2 (Env.define fn_env) lf.lf_params args;
+  let result = ref Value.VNil in
+  (try List.iter (exec fn_env) lf.lf_body with Return v -> result := v);
+  !result
+
+(* Build a VFun callable for a plain function (no `this`). *)
+and make_fun_callable lf =
+  let id = register_fun lf in
+  Value.VFun
+    {
+      Value.arity = lf.lf_arity;
+      name = lf.lf_name;
+      call =
+        (fun args ->
+          let lf = Hashtbl.find fun_table id in
+          call_fun lf None args);
+    }
+
+(* Build a VFun callable for a method bound to a specific instance. *)
+and make_bound_method lf inst =
+  let id = register_fun lf in
+  Value.VFun
+    {
+      Value.arity = lf.lf_arity;
+      name = lf.lf_name;
+      call =
+        (fun args ->
+          let lf = Hashtbl.find fun_table id in
+          call_fun lf (Some (Value.VInstance inst)) args);
+    }
+
 (* ── Expression evaluator ───────────────────────────────────────────────── *)
 
-let rec eval env = function
+and eval env = function
   | Expr.Literal (Expr.LitBool b) -> Value.VBool b
   | Expr.Literal Expr.LitNil -> Value.VNil
   | Expr.Literal (Expr.LitNum f) -> Value.VNum f
   | Expr.Literal (Expr.LitStr s) -> Value.VString s
   | Expr.Grouping e -> eval env e
   | Expr.Variable (name, line, uid) -> lookup_var env name line uid
+  | Expr.This (line, uid) -> lookup_var env "this" line uid
   | Expr.Assign (name, e, line, uid) ->
       let v = eval env e in
       (match Hashtbl.find_opt !locals uid with
@@ -64,7 +112,23 @@ let rec eval env = function
           | Some v -> v
           | None -> (
               match Hashtbl.find_opt inst.instance_class.methods name with
-              | Some fn -> Value.VFun fn
+              | Some callable -> (
+                  (* Re-look up the lox_fun by scanning the fun_table for
+                     the matching name and closure — we stored it at class
+                     declaration time. Use the id captured in the callable. *)
+                  match
+                    Hashtbl.fold
+                      (fun id lf acc ->
+                        if lf.lf_name = callable.Value.name then Some (id, lf)
+                        else acc)
+                      fun_table None
+                  with
+                  | Some (_, lf) -> make_bound_method lf inst
+                  | None ->
+                      (* Fallback: shouldn't happen if class was declared
+                         via Stmt.ClassDecl, but handle gracefully *)
+                      runtime_error_at line
+                        (Printf.sprintf "Method '%s' has no fun record." name))
               | None ->
                   runtime_error_at line
                     (Printf.sprintf "Undefined property '%s'." name)))
@@ -147,7 +211,7 @@ let rec eval env = function
 
 (* ── Statement executor ─────────────────────────────────────────────────── *)
 
-let rec exec env = function
+and exec env = function
   | Stmt.Print expr ->
       Value.print (eval env expr);
       print_newline ()
@@ -170,39 +234,43 @@ let rec exec env = function
       let v = match expr with Some e -> eval env e | None -> Value.VNil in
       raise (Return v)
   | Stmt.FunDecl (name, params, body, _) ->
-      let closure = env in
-      Env.define env name
-        (Value.VFun
-           {
-             arity = List.length params;
-             name;
-             call =
-               (fun args ->
-                 let fn_env = Env.make_child closure in
-                 List.iter2 (Env.define fn_env) params args;
-                 let result = ref Value.VNil in
-                 (try List.iter (exec fn_env) body
-                  with Return v -> result := v);
-                 !result);
-           })
+      let lf =
+        {
+          lf_arity = List.length params;
+          lf_name = name;
+          lf_params = params;
+          lf_body = body;
+          lf_closure = env;
+        }
+      in
+      Env.define env name (make_fun_callable lf)
   | Stmt.ClassDecl (name, methods, _) ->
       let method_table = Hashtbl.create 8 in
+      (* For each method, register a lox_fun in fun_table and store a
+         placeholder callable in method_table. The real binding happens in
+         Expr.Get where we look up the lox_fun by name and build a bound
+         method with `this` injected. *)
       List.iter
         (function
           | Stmt.FunDecl (mname, params, body, _) ->
-              let closure = env in
+              let lf =
+                {
+                  lf_arity = List.length params;
+                  lf_name = mname;
+                  lf_params = params;
+                  lf_body = body;
+                  lf_closure = env;
+                }
+              in
+              let id = register_fun lf in
               Hashtbl.replace method_table mname
                 {
-                  Value.arity = List.length params;
+                  Value.arity = lf.lf_arity;
                   name = mname;
                   call =
                     (fun args ->
-                      let fn_env = Env.make_child closure in
-                      List.iter2 (Env.define fn_env) params args;
-                      let result = ref Value.VNil in
-                      (try List.iter (exec fn_env) body
-                       with Return v -> result := v);
-                      !result);
+                      let lf = Hashtbl.find fun_table id in
+                      call_fun lf None args);
                 }
           | _ -> ())
         methods;

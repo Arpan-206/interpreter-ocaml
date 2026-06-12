@@ -15,10 +15,16 @@ type t = {
   locals : locals;
   scopes : scope Stack.t;
   mutable function_depth : int; (* 0 = top-level, >0 = inside a function *)
+  mutable class_depth : int; (* 0 = outside class, >0 = inside class method *)
 }
 
 let make_resolver () =
-  { locals = Hashtbl.create 64; scopes = Stack.create (); function_depth = 0 }
+  {
+    locals = Hashtbl.create 64;
+    scopes = Stack.create ();
+    function_depth = 0;
+    class_depth = 0;
+  }
 
 (* ── Scope management ───────────────────────────────────────────────────── *)
 
@@ -83,6 +89,10 @@ let rec resolve_expr r = function
   | Expr.Set (obj, _, value, _) ->
       resolve_expr r obj;
       resolve_expr r value
+  | Expr.This (line, uid) ->
+      if r.class_depth = 0 then
+        resolve_error line "this" "Can't use 'this' outside of a class.";
+      resolve_local r uid "this"
 
 (* ── Statement resolution ───────────────────────────────────────────────── *)
 
@@ -128,10 +138,12 @@ and resolve_stmt r = function
   | Stmt.ClassDecl (name, methods, line) ->
       declare r name line;
       define r name;
+      r.class_depth <- r.class_depth + 1;
       List.iter
         (function
           | Stmt.FunDecl (_, params, body, mline) ->
               begin_scope r;
+              Hashtbl.replace (Stack.top r.scopes) "this" true;
               r.function_depth <- r.function_depth + 1;
               List.iter
                 (fun p ->
@@ -142,7 +154,9 @@ and resolve_stmt r = function
               r.function_depth <- r.function_depth - 1;
               end_scope r
           | _ -> ())
-        methods
+        methods;
+      r.class_depth <- r.class_depth - 1
+
 (* ── Public entry point ─────────────────────────────────────────────────── *)
 
 let resolve stmts =

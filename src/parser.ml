@@ -36,6 +36,9 @@ let rec parse_primary p =
   | Lexer.NIL -> (advance p, Expr.Literal Expr.LitNil)
   | Lexer.NUMBER (n, _) -> (advance p, Expr.Literal (Expr.LitNum n))
   | Lexer.STRING s -> (advance p, Expr.Literal (Expr.LitStr s))
+  | Lexer.THIS ->
+      let line = current_line p in
+      (advance p, Expr.This (line, Expr.fresh_id ()))
   | Lexer.IDENTIFIER name ->
       let line = current_line p in
       (advance p, Expr.Variable (name, line, Expr.fresh_id ()))

@@ -25,6 +25,7 @@ type t =
   | Call of t * t list * int (* callee, args, line *)
   | Get of t * string * int (* object, property name, line *)
   | Set of t * string * t * int (* object, property name, value, line *)
+  | This of int * int
 
 and literal = LitBool of bool | LitNil | LitNum of float | LitStr of string
 
@@ -127,3 +128,4 @@ let rec print = function
       print_string name;
       print_string " = ";
       print value
+  | This (_, _) -> print_string "this"
