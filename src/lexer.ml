@@ -1,4 +1,12 @@
+(* lexer.ml — hand-rolled lexer for Lox
+   Converts raw source text into a flat array of (token * line) pairs.
+   Two modes: scan (prints tokens for "tokenize" command) and
+   tokenize (returns array for parser). *)
+
+(* ── Token type ─────────────────────────────────────────────────────────── *)
+
 type token =
+  (* Single-character tokens *)
   | LEFT_PAREN
   | RIGHT_PAREN
   | LEFT_BRACE
@@ -10,6 +18,7 @@ type token =
   | MINUS
   | SEMICOLON
   | SLASH
+  (* One or two character tokens *)
   | EQUAL
   | EQUAL_EQUAL
   | BANG
@@ -18,9 +27,11 @@ type token =
   | LESS_EQUAL
   | GREATER
   | GREATER_EQUAL
+  (* Literals *)
   | STRING of string
-  | NUMBER of float * string
+  | NUMBER of float * string (* value + original lexeme for printing *)
   | IDENTIFIER of string
+  (* Keywords *)
   | AND
   | CLASS
   | ELSE
@@ -39,16 +50,25 @@ type token =
   | WHILE
   | EOF
 
+(* ── Lexer state ─────────────────────────────────────────────────────────── *)
+
 type lexer = { input : string; pos : int; line : int }
 
 let make input = { input; pos = 0; line = 1 }
 
+(* Returns '\x00' (NUL) when past end of input — used as sentinel *)
 let current { input; pos } =
   if pos >= String.length input then '\x00' else input.[pos]
 
 let advance l = { l with pos = l.pos + 1 }
+
+(* Look one character ahead without consuming *)
 let peek l = current (advance l)
 
+(* ── Number scanning ─────────────────────────────────────────────────────── *)
+
+(* Consume digits and an optional decimal part.
+   Only consumes '.' if followed by a digit — avoids eating 1.foo method calls. *)
 let read_number l =
   let buf = Buffer.create 8 in
   let rec consume l =
@@ -57,7 +77,6 @@ let read_number l =
         Buffer.add_char buf (current l);
         consume (advance l)
     | '.' when match peek l with '0' .. '9' -> true | _ -> false ->
-        (* only consume '.' if followed by a digit — avoids eating method calls like 1.foo *)
         Buffer.add_char buf '.';
         consume (advance l)
     | _ -> l
@@ -65,6 +84,8 @@ let read_number l =
   let l' = consume l in
   let s = Buffer.contents buf in
   (l', float_of_string s, s)
+
+(* ── Keyword table ───────────────────────────────────────────────────────── *)
 
 let keyword_of_string = function
   | "and" -> Some AND
@@ -85,11 +106,14 @@ let keyword_of_string = function
   | "while" -> Some WHILE
   | _ -> None
 
-type lex_result =
-  | Token of token * string (* token + lexeme *)
-  | LexError of string (* error message *)
-  | Skip (* whitespace — just recurse *)
+(* ── Single-step lexer ───────────────────────────────────────────────────── *)
 
+type lex_result =
+  | Token of token * string (* token + its source lexeme *)
+  | LexError of string (* error message, scanning continues *)
+  | Skip (* whitespace/comment — nothing to emit *)
+
+(* Consume one logical token from the current position *)
 let next_token l =
   match current l with
   | ' ' | '\t' | '\r' -> (advance l, Skip)
@@ -106,6 +130,7 @@ let next_token l =
   | ';' -> (advance l, Token (SEMICOLON, ";"))
   | '/' ->
       if peek l = '/' then
+        (* Line comment — skip everything until newline *)
         let rec skip_line l =
           match current l with '\n' | '\x00' -> l | _ -> skip_line (advance l)
         in
@@ -124,6 +149,7 @@ let next_token l =
       if peek l = '=' then (advance (advance l), Token (GREATER_EQUAL, ">="))
       else (advance l, Token (GREATER, ">"))
   | '"' ->
+      (* String literal — multi-line allowed, tracks start line for error *)
       let start_line = l.line in
       let buf = Buffer.create 32 in
       let rec scan_string l =
@@ -149,6 +175,7 @@ let next_token l =
       let l', value, lexeme = read_number l in
       (l', Token (NUMBER (value, lexeme), lexeme))
   | 'a' .. 'z' | 'A' .. 'Z' | '_' ->
+      (* Identifier or keyword *)
       let buf = Buffer.create 8 in
       let rec consume l =
         match current l with
@@ -171,6 +198,9 @@ let next_token l =
           (Printf.sprintf "[line %d] Error: Unexpected character: %c" l.line c)
       )
 
+(* ── Token formatting ────────────────────────────────────────────────────── *)
+
+(* Format a token for the "tokenize" command output *)
 let token_to_string tok lexeme =
   match tok with
   | LEFT_PAREN -> Printf.sprintf "LEFT_PAREN %s null" lexeme
@@ -194,6 +224,7 @@ let token_to_string tok lexeme =
   | GREATER_EQUAL -> Printf.sprintf "GREATER_EQUAL %s null" lexeme
   | STRING s -> Printf.sprintf "STRING \"%s\" %s" s s
   | NUMBER (f, raw) ->
+      (* Integers print with one decimal place: 1 → "1.0" *)
       let lit =
         if Float.is_integer f then Printf.sprintf "%.1f" f
         else string_of_float f
@@ -218,6 +249,9 @@ let token_to_string tok lexeme =
   | WHILE -> Printf.sprintf "WHILE %s null" lexeme
   | EOF -> "EOF  null"
 
+(* ── Public interface ────────────────────────────────────────────────────── *)
+
+(* "tokenize" command mode — print tokens to stdout, return whether any errors *)
 let rec scan l had_error =
   let l', result = next_token l in
   match result with
@@ -232,6 +266,9 @@ let rec scan l had_error =
       print_endline (token_to_string tok lexeme);
       scan l' had_error
 
+(* "run"/"parse" mode — collect all tokens into an array for the parser.
+   Each token is paired with the line number where it appeared.
+   Lex errors are reported but scanning continues. *)
 let tokenize input =
   let rec go l acc =
     let l', result = next_token l in
@@ -242,11 +279,11 @@ let tokenize input =
         go l' acc
     | Token (tok, _) ->
         let acc' = (tok, l.line) :: acc in
-        (* pair token with current line *)
         if tok = EOF then Array.of_list (List.rev acc') else go l' acc'
   in
   go (make input) []
 
+(* Returns the canonical source lexeme for a token — used in parse error messages *)
 let token_lexeme = function
   | LEFT_PAREN -> "("
   | RIGHT_PAREN -> ")"
