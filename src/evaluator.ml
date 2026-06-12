@@ -37,17 +37,20 @@ let rec eval env = function
   | Expr.And (left, right) ->
       let v = eval env left in
       if not (is_truthy v) then v else eval env right
-  | Expr.Call (callee, args, line) -> (
+  | Expr.Call (callee, args, line) ->
       let fn = eval env callee in
       let arg_vals = List.map (eval env) args in
-      match fn with
-      | Value.VCallable c ->
-          if List.length arg_vals <> c.arity then
-            runtime_error_at line
-              (Printf.sprintf "Expected %d arguments but got %d." c.arity
-                 (List.length arg_vals))
-          else c.call arg_vals
-      | _ -> runtime_error_at line "Can only call functions and classes.")
+      let arity, call =
+        match fn with
+        | Value.VCallable c -> (c.arity, c.call)
+        | Value.VFun f -> (f.arity, f.call)
+        | _ -> runtime_error_at line "Can only call functions and classes."
+      in
+      if List.length arg_vals <> arity then
+        runtime_error_at line
+          (Printf.sprintf "Expected %d arguments but got %d." arity
+             (List.length arg_vals))
+      else call arg_vals
   | Expr.Binary (e1, op, e2) -> (
       let v1 = eval env e1 in
       let v2 = eval env e2 in
@@ -105,6 +108,20 @@ let rec exec env = function
       while is_truthy (eval env condition) do
         exec env body
       done
+  | Stmt.FunDecl (name, params, body) ->
+      let closure = env in
+      Env.define env name
+        (Value.VFun
+           {
+             arity = List.length params;
+             name;
+             call =
+               (fun args ->
+                 let fn_env = Env.make_child closure in
+                 List.iter2 (Env.define fn_env) params args;
+                 List.iter (exec fn_env) body;
+                 Value.VNil);
+           })
 
 let exec_program stmts =
   let env = Env.make () in

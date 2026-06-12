@@ -5,3 +5,4 @@ type t =
   | Block of t list
   | If of Expr.t * t * t option
   | While of Expr.t * t
+  | FunDecl of string * string list * t list (* name, params, body *)

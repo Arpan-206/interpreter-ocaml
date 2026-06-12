@@ -185,6 +185,45 @@ and parse_declaration p =
           | Lexer.SEMICOLON -> (advance p'', Stmt.VarDecl (name, None))
           | _ -> parse_error p'' "Expect '=' or ';' after variable name.")
       | _ -> parse_error p' "Expect variable name.")
+  | Lexer.FUN -> (
+      let p = advance p in
+      match current_tok p with
+      | Lexer.IDENTIFIER name ->
+          let p = advance p in
+          let p =
+            match current_tok p with
+            | Lexer.LEFT_PAREN -> advance p
+            | _ -> parse_error p "Expect '(' after function name."
+          in
+          let rec parse_params p acc =
+            match current_tok p with
+            | Lexer.RIGHT_PAREN -> (advance p, List.rev acc)
+            | Lexer.IDENTIFIER param -> (
+                let p = advance p in
+                let acc = param :: acc in
+                match current_tok p with
+                | Lexer.COMMA -> parse_params (advance p) acc
+                | Lexer.RIGHT_PAREN -> (advance p, List.rev acc)
+                | _ -> parse_error p "Expect ')' after parameters.")
+            | _ -> parse_error p "Expect parameter name."
+          in
+          let p, params = parse_params p [] in
+          let p =
+            match current_tok p with
+            | Lexer.LEFT_BRACE -> advance p
+            | _ -> parse_error p "Expect '{' before function body."
+          in
+          let rec parse_body p acc =
+            match current_tok p with
+            | Lexer.RIGHT_BRACE -> (advance p, List.rev acc)
+            | Lexer.EOF -> parse_error p "Expect '}' after block."
+            | _ ->
+                let p, s = parse_declaration p in
+                parse_body p (s :: acc)
+          in
+          let p, body = parse_body p [] in
+          (p, Stmt.FunDecl (name, params, body))
+      | _ -> parse_error p "Expect function name.")
   | _ -> parse_statement p
 
 and parse_statement p =

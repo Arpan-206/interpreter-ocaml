@@ -3,7 +3,8 @@ type t =
   | VNil
   | VNum of float
   | VString of string
-  | VCallable of callable
+  | VCallable of callable (* native *)
+  | VFun of callable (* user-defined — same shape, different print *)
 
 and callable = { arity : int; call : t list -> t; name : string }
 
@@ -16,3 +17,4 @@ let print = function
       else print_string (string_of_float f)
   | VString s -> print_string s
   | VCallable c -> print_string ("<native fn " ^ c.name ^ ">")
+  | VFun f -> print_string ("<fn " ^ f.name ^ ">")
