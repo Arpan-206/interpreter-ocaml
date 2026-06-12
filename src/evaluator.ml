@@ -133,7 +133,7 @@ let rec exec env = function
       Value.print (eval env expr);
       print_newline ()
   | Stmt.Expression expr -> ignore (eval env expr)
-  | Stmt.VarDecl (name, init) ->
+  | Stmt.VarDecl (name, init, _) ->
       let v = match init with Some e -> eval env e | None -> Value.VNil in
       Env.define env name v
   | Stmt.Block stmts ->
@@ -150,7 +150,7 @@ let rec exec env = function
   | Stmt.Return expr ->
       let v = match expr with Some e -> eval env e | None -> Value.VNil in
       raise (Return v)
-  | Stmt.FunDecl (name, params, body) ->
+  | Stmt.FunDecl (name, params, body, _) ->
       (* Capture the closure env at definition time — the resolver ensures
          variable lookups inside the body jump to the correct scope depth *)
       let closure = env in

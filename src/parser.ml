@@ -165,8 +165,7 @@ and parse_or p =
   in
   loop p left
 
-(* Assignment — right-associative, target must be a variable.
-   Generates a fresh uid for the Assign node so the resolver can identify it. *)
+(* Assignment — right-associative, target must be a variable. *)
 and parse_assignment p =
   let p', expr = parse_or p in
   match current_tok p' with
@@ -185,6 +184,7 @@ and parse_expression p = parse_assignment p
 and parse_declaration p =
   match current_tok p with
   | Lexer.VAR -> (
+      let line = current_line p in
       let p' = advance p in
       match current_tok p' with
       | Lexer.IDENTIFIER name -> (
@@ -197,11 +197,12 @@ and parse_declaration p =
                 | Lexer.SEMICOLON -> advance p'''
                 | _ -> parse_error p''' "Expect ';' after variable declaration."
               in
-              (p''', Stmt.VarDecl (name, Some init))
-          | Lexer.SEMICOLON -> (advance p'', Stmt.VarDecl (name, None))
+              (p''', Stmt.VarDecl (name, Some init, line))
+          | Lexer.SEMICOLON -> (advance p'', Stmt.VarDecl (name, None, line))
           | _ -> parse_error p'' "Expect '=' or ';' after variable name.")
       | _ -> parse_error p' "Expect variable name.")
   | Lexer.FUN -> (
+      let line = current_line p in
       let p = advance p in
       match current_tok p with
       | Lexer.IDENTIFIER name ->
@@ -238,7 +239,7 @@ and parse_declaration p =
                 parse_body p (s :: acc)
           in
           let p, body = parse_body p [] in
-          (p, Stmt.FunDecl (name, params, body))
+          (p, Stmt.FunDecl (name, params, body, line))
       | _ -> parse_error p "Expect function name.")
   | _ -> parse_statement p
 
@@ -390,10 +391,8 @@ let rec parse_program' p acc =
       let p', stmt = parse_declaration p in
       parse_program' p' (stmt :: acc)
 
-(* Entry point for "run" mode — parses a full list of statements *)
 let parse_program tokens = parse_program' (make tokens) []
 
-(* Entry point for "parse" mode — parses a single expression *)
 let parse tokens =
   let _p', ast = parse_expression (make tokens) in
   ast

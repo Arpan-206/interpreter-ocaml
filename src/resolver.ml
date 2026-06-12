@@ -27,10 +27,19 @@ let make_resolver () = { locals = Hashtbl.create 64; scopes = Stack.create () }
 let begin_scope r = Stack.push (Hashtbl.create 8) r.scopes
 let end_scope r = ignore (Stack.pop r.scopes)
 
-(* Declare: name is known in this scope but not yet safe to read *)
-let declare r name =
-  if not (Stack.is_empty r.scopes) then
-    Hashtbl.replace (Stack.top r.scopes) name false
+let resolve_error line name msg =
+  Printf.eprintf "[line %d] Error at '%s': %s\n" line name msg;
+  exit 65
+
+(* Declare: name is known in this scope but not yet safe to read.
+   Errors if the name is already declared in this exact scope (duplicate local). *)
+let declare r name line =
+  if not (Stack.is_empty r.scopes) then begin
+    let scope = Stack.top r.scopes in
+    if Hashtbl.mem scope name then
+      resolve_error line name "Already a variable with this name in this scope.";
+    Hashtbl.replace scope name false
+  end
 
 (* Define: name is fully initialised and safe to read *)
 let define r name =
@@ -42,13 +51,12 @@ let define r name =
 (* Walk scopes from innermost outward looking for `name`.
    Record the hop count in locals under this node's uid.
    If not found in any local scope → it's a global, leave it unrecorded
-   (the evaluator will fall back to a full env-chain walk for globals). *)
+   (the evaluator will fall back to the global env for globals). *)
 let resolve_local r uid name =
-  (* Stack.to_seq yields top (innermost) first *)
   let scopes = Stack.to_seq r.scopes |> Array.of_seq in
   let n = Array.length scopes in
   let rec loop i =
-    if i >= n then () (* not found locally → global *)
+    if i >= n then ()
     else if Hashtbl.mem scopes.(i) name then Hashtbl.replace r.locals uid i
     else loop (i + 1)
   in
@@ -74,15 +82,11 @@ let rec resolve_expr r = function
       (if not (Stack.is_empty r.scopes) then
          match Hashtbl.find_opt (Stack.top r.scopes) name with
          | Some false ->
-             Printf.eprintf
-               "[line %d] Error: Can't read local variable in its own \
-                initializer.\n"
-               line;
-             exit 65
+             resolve_error line name
+               "Can't read local variable in its own initializer."
          | _ -> ());
       resolve_local r uid name
   | Expr.Assign (name, e, _, uid) ->
-      (* Resolve the value expression first, then bind the target *)
       resolve_expr r e;
       resolve_local r uid name
 
@@ -93,20 +97,19 @@ and resolve_stmt r = function
   | Stmt.Print e -> resolve_expr r e
   | Stmt.Return (Some e) -> resolve_expr r e
   | Stmt.Return None -> ()
-  | Stmt.VarDecl (name, init) ->
-      (* Declare first so the initialiser can't reference the variable itself *)
-      declare r name;
+  | Stmt.VarDecl (name, init, line) ->
+      declare r name line;
       (match init with Some e -> resolve_expr r e | None -> ());
       define r name
-  | Stmt.FunDecl (name, params, body) ->
-      (* Define the function name before resolving its body so it can recurse *)
-      declare r name;
+  | Stmt.FunDecl (name, params, body, line) ->
+      declare r name line;
       define r name;
-      (* Function body gets its own scope for parameters *)
       begin_scope r;
+      (* Duplicate parameters are caught here — each param declared into
+         the same fresh scope, so the second `arg` sees the first already present *)
       List.iter
         (fun p ->
-          declare r p;
+          declare r p line;
           define r p)
         params;
       List.iter (resolve_stmt r) body;
@@ -125,7 +128,6 @@ and resolve_stmt r = function
 
 (* ── Public entry point ─────────────────────────────────────────────────── *)
 
-(* Run the resolver over a full program and return the completed locals table *)
 let resolve stmts =
   let r = make_resolver () in
   List.iter (resolve_stmt r) stmts;

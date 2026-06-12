@@ -1,13 +1,3 @@
-var variable = "global";
-
-{
-  fun f() {
-    print variable;
-  }
-
-  f();
-
-  var variable = "local";
-
-  f();
+fun foo(arg, arg) {
+  "body";
 }
