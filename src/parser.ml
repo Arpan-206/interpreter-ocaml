@@ -177,7 +177,7 @@ and parse_statement p =
         | Lexer.RIGHT_BRACE -> (advance p, Stmt.Block (List.rev acc))
         | Lexer.EOF -> parse_error p "Expect '}' after block."
         | _ ->
-            let p', stmt = parse_statement p in
+            let p', stmt = parse_declaration p in
             parse_block p' (stmt :: acc)
       in
       parse_block (advance p) []
