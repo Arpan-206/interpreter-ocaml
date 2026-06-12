@@ -240,8 +240,8 @@ and exec env = function
       while is_truthy (eval env condition) do
         exec env body
       done
-  | Stmt.Return expr ->
-      let v = match expr with Some e -> eval env e | None -> Value.VNil in
+  | Stmt.Return (value, _) ->
+      let v = match value with Some e -> eval env e | None -> Value.VNil in
       raise (Return v)
   | Stmt.FunDecl (name, params, body, _) ->
       let lf =

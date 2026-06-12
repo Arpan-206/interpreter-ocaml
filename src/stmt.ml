@@ -10,6 +10,6 @@ type t =
   | FunDecl of
       string * string list * t list * int (* fun name(params) { body } line *)
   | Return of
-      Expr.t
-      option (* return <expr>?; — raises exception to unwind call stack *)
+      Expr.t option
+      * int (* return <expr>?; — raises exception to unwind call stack *)
   | ClassDecl of string * t list * int (* class name { ... } line *)

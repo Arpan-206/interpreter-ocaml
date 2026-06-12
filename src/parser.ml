@@ -175,7 +175,7 @@ and parse_or p =
   in
   loop p left
 
-(* Assignment — right-associative, target must be a variable. *)
+(* Assignment — right-associative, target must be a variable or property. *)
 and parse_assignment p =
   let p', expr = parse_or p in
   match current_tok p' with
@@ -263,6 +263,7 @@ and parse_statement p =
       | Lexer.SEMICOLON -> (advance p'', Stmt.Print expr)
       | _ -> parse_error p'' "Expect ';' after value.")
   | Lexer.RETURN ->
+      let ret_line = current_line p in
       let p = advance p in
       let p, value =
         match current_tok p with
@@ -276,7 +277,7 @@ and parse_statement p =
             in
             (p, Some e)
       in
-      (p, Stmt.Return value)
+      (p, Stmt.Return (value, ret_line))
   | Lexer.LEFT_BRACE ->
       let rec parse_block p acc =
         match current_tok p with
@@ -382,7 +383,6 @@ and parse_statement p =
           (p, Stmt.ClassDecl (name, methods, line))
       | _ -> parse_error p "Expect class name.")
   | Lexer.FOR ->
-      (* Desugared into: Block [init; While (cond) Block [body; incr]] *)
       let p = advance p in
       let p =
         match current_tok p with

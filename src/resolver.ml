@@ -48,7 +48,7 @@ let resolve_local r uid name =
   in
   loop 0
 
-let resolve_function r kind params body line =
+let rec resolve_function r kind params body line =
   let enclosing = r.current_function in
   r.current_function <- kind;
   begin_scope r;
@@ -61,7 +61,7 @@ let resolve_function r kind params body line =
   end_scope r;
   r.current_function <- enclosing
 
-let rec resolve_expr r = function
+and resolve_expr r = function
   | Expr.Literal _ -> ()
   | Expr.Grouping e -> resolve_expr r e
   | Expr.Unary (_, e) -> resolve_expr r e
@@ -97,15 +97,18 @@ let rec resolve_expr r = function
 and resolve_stmt r = function
   | Stmt.Expression e -> resolve_expr r e
   | Stmt.Print e -> resolve_expr r e
-  | Stmt.Return (Some e) ->
-      if r.current_function = NoFunction then
-        resolve_error 0 "return" "Can't return from top-level code.";
-      if r.current_function = Initializer then
-        resolve_error 0 "return" "Can't return a value from an initializer.";
-      resolve_expr r e
-  | Stmt.Return None ->
-      if r.current_function = NoFunction then
-        resolve_error 0 "return" "Can't return from top-level code."
+  | Stmt.Return (value, line) -> (
+      match value with
+      | Some e ->
+          if r.current_function = NoFunction then
+            resolve_error line "return" "Can't return from top-level code.";
+          if r.current_function = Initializer then
+            resolve_error line "return"
+              "Can't return a value from an initializer.";
+          resolve_expr r e
+      | None ->
+          if r.current_function = NoFunction then
+            resolve_error line "return" "Can't return from top-level code.")
   | Stmt.VarDecl (name, init, line) ->
       declare r name line;
       (match init with Some e -> resolve_expr r e | None -> ());
@@ -132,19 +135,19 @@ and resolve_stmt r = function
       List.iter
         (function
           | Stmt.FunDecl (mname, params, body, mline) ->
-              begin_scope r;
-              Hashtbl.replace (Stack.top r.scopes) "this" true;
               let kind = if mname = "init" then Initializer else Method in
               let enclosing = r.current_function in
               r.current_function <- kind;
+              begin_scope r;
+              Hashtbl.replace (Stack.top r.scopes) "this" true;
               List.iter
                 (fun p ->
                   declare r p mline;
                   define r p)
                 params;
               List.iter (resolve_stmt r) body;
-              r.current_function <- enclosing;
-              end_scope r
+              end_scope r;
+              r.current_function <- enclosing
           | _ -> ())
         methods;
       r.class_depth <- r.class_depth - 1
