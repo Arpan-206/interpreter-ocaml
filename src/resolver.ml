@@ -125,9 +125,24 @@ and resolve_stmt r = function
   | Stmt.While (cond, body) ->
       resolve_expr r cond;
       resolve_stmt r body
-  | Stmt.ClassDecl (name, line) ->
+  | Stmt.ClassDecl (name, methods, line) ->
       declare r name line;
-      define r name
+      define r name;
+      List.iter
+        (function
+          | Stmt.FunDecl (_, params, body, mline) ->
+              begin_scope r;
+              r.function_depth <- r.function_depth + 1;
+              List.iter
+                (fun p ->
+                  declare r p mline;
+                  define r p)
+                params;
+              List.iter (resolve_stmt r) body;
+              r.function_depth <- r.function_depth - 1;
+              end_scope r
+          | _ -> ())
+        methods
 (* ── Public entry point ─────────────────────────────────────────────────── *)
 
 let resolve stmts =

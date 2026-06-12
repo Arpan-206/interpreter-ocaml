@@ -14,7 +14,7 @@ type t =
 (* Both native and user functions share this record.
    The call field is a closure that captures the environment at definition time. *)
 and callable = { arity : int; call : t list -> t; name : string }
-and lox_class = { class_name : string }
+and lox_class = { class_name : string; methods : (string, callable) Hashtbl.t }
 
 and lox_instance = {
   instance_class : lox_class;

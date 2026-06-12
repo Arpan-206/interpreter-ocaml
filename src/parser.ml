@@ -332,13 +332,51 @@ and parse_statement p =
             | Lexer.LEFT_BRACE -> advance p
             | _ -> parse_error p "Expect '{' before class body."
           in
-          (* For now: skip over the empty body *)
-          let p =
+          let rec parse_methods p acc =
             match current_tok p with
-            | Lexer.RIGHT_BRACE -> advance p
-            | _ -> parse_error p "Expect '}' after class body."
+            | Lexer.RIGHT_BRACE -> (advance p, List.rev acc)
+            | Lexer.EOF -> parse_error p "Expect '}' after class body."
+            | Lexer.IDENTIFIER mname ->
+                let mline = current_line p in
+                let p = advance p in
+                let p =
+                  match current_tok p with
+                  | Lexer.LEFT_PAREN -> advance p
+                  | _ -> parse_error p "Expect '(' after method name."
+                in
+                let rec parse_params p acc =
+                  match current_tok p with
+                  | Lexer.RIGHT_PAREN -> (advance p, List.rev acc)
+                  | Lexer.IDENTIFIER param -> (
+                      let p = advance p in
+                      let acc = param :: acc in
+                      match current_tok p with
+                      | Lexer.COMMA -> parse_params (advance p) acc
+                      | Lexer.RIGHT_PAREN -> (advance p, List.rev acc)
+                      | _ -> parse_error p "Expect ')' after parameters.")
+                  | _ -> parse_error p "Expect parameter name."
+                in
+                let p, params = parse_params p [] in
+                let p =
+                  match current_tok p with
+                  | Lexer.LEFT_BRACE -> advance p
+                  | _ -> parse_error p "Expect '{' before method body."
+                in
+                let rec parse_body p acc =
+                  match current_tok p with
+                  | Lexer.RIGHT_BRACE -> (advance p, List.rev acc)
+                  | Lexer.EOF -> parse_error p "Expect '}' after block."
+                  | _ ->
+                      let p, s = parse_declaration p in
+                      parse_body p (s :: acc)
+                in
+                let p, body = parse_body p [] in
+                parse_methods p
+                  (Stmt.FunDecl (mname, params, body, mline) :: acc)
+            | _ -> parse_error p "Expect method name."
           in
-          (p, Stmt.ClassDecl (name, line))
+          let p, methods = parse_methods p [] in
+          (p, Stmt.ClassDecl (name, methods, line))
       | _ -> parse_error p "Expect class name.")
   | Lexer.FOR ->
       (* Desugared into: Block [init; While (cond) Block [body; incr]] *)

@@ -62,9 +62,12 @@ let rec eval env = function
       | Value.VInstance inst -> (
           match Hashtbl.find_opt inst.fields name with
           | Some v -> v
-          | None ->
-              runtime_error_at line
-                (Printf.sprintf "Undefined property '%s'." name))
+          | None -> (
+              match Hashtbl.find_opt inst.instance_class.methods name with
+              | Some fn -> Value.VFun fn
+              | None ->
+                  runtime_error_at line
+                    (Printf.sprintf "Undefined property '%s'." name)))
       | _ -> runtime_error_at line "Only instances have properties.")
   | Expr.Set (obj, name, value, line) -> (
       match eval env obj with
@@ -182,8 +185,29 @@ let rec exec env = function
                   with Return v -> result := v);
                  !result);
            })
-  | Stmt.ClassDecl (name, _) ->
-      Env.define env name (Value.VClass { class_name = name })
+  | Stmt.ClassDecl (name, methods, _) ->
+      let method_table = Hashtbl.create 8 in
+      List.iter
+        (function
+          | Stmt.FunDecl (mname, params, body, _) ->
+              let closure = env in
+              Hashtbl.replace method_table mname
+                {
+                  Value.arity = List.length params;
+                  name = mname;
+                  call =
+                    (fun args ->
+                      let fn_env = Env.make_child closure in
+                      List.iter2 (Env.define fn_env) params args;
+                      let result = ref Value.VNil in
+                      (try List.iter (exec fn_env) body
+                       with Return v -> result := v);
+                      !result);
+                }
+          | _ -> ())
+        methods;
+      Env.define env name
+        (Value.VClass { class_name = name; methods = method_table })
 
 (* ── Program entry point ────────────────────────────────────────────────── *)
 
