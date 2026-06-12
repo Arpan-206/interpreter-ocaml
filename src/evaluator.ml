@@ -109,6 +109,23 @@ and eval env = function
   | Expr.Grouping e -> eval env e
   | Expr.Variable (name, line, uid) -> lookup_var env name line uid
   | Expr.This (line, uid) -> lookup_var env "this" line uid
+  | Expr.Super (line, method_name, uid) -> (
+      match Hashtbl.find_opt !locals uid with
+      | None -> runtime_error_at line "Undefined 'super'."
+      | Some distance -> (
+          match Env.get_at env distance "super" with
+          | Some (Value.VClass superclass) -> (
+              match Env.get_at env (distance - 1) "this" with
+              | Some (Value.VInstance instance) -> (
+                  match find_method superclass method_name with
+                  | Some method_id ->
+                      let lf = Hashtbl.find fun_table method_id in
+                      make_bound_method lf instance
+                  | None ->
+                      runtime_error_at line
+                        (Printf.sprintf "Undefined property '%s'." method_name))
+              | _ -> runtime_error_at line "Undefined 'this' in super lookup.")
+          | _ -> runtime_error_at line "Superclass must be a class."))
   | Expr.Assign (name, e, line, uid) ->
       let v = eval env e in
       (match Hashtbl.find_opt !locals uid with
@@ -263,14 +280,24 @@ and exec env = function
         }
       in
       Env.define env name (make_fun_callable lf)
-  | Stmt.ClassDecl (name, superclass_expr, methods, _) ->
+  | Stmt.ClassDecl (name, superclass_expr, methods, _) -> (
       let superclass =
         match superclass_expr with
         | None -> None
         | Some expr -> (
-            match eval env expr with
+            let v = eval env expr in
+            match v with
             | Value.VClass c -> Some c
             | _ -> runtime_error "Superclass must be a class.")
+      in
+      Env.define env name Value.VNil;
+      let method_env =
+        match superclass with
+        | Some sc ->
+            let child = Env.make_child env in
+            Env.define child "super" (Value.VClass sc);
+            child
+        | None -> env
       in
       let method_table = Hashtbl.create 8 in
       List.iter
@@ -282,7 +309,7 @@ and exec env = function
                   lf_name = mname;
                   lf_params = params;
                   lf_body = body;
-                  lf_closure = env;
+                  lf_closure = method_env;
                   lf_is_initializer = mname = "init";
                 }
               in
@@ -290,8 +317,12 @@ and exec env = function
               Hashtbl.replace method_table mname id
           | _ -> ())
         methods;
-      Env.define env name
-        (Value.VClass { class_name = name; methods = method_table; superclass })
+      let klass =
+        Value.VClass { class_name = name; methods = method_table; superclass }
+      in
+      match Env.assign env name klass with
+      | Ok () -> ()
+      | Error msg -> runtime_error msg)
 
 let exec_program stmts =
   let env = Env.make () in

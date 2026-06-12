@@ -47,6 +47,18 @@ let rec parse_primary p =
       match current_tok p' with
       | Lexer.RIGHT_PAREN -> (advance p', Expr.Grouping expr)
       | _ -> parse_error p' "Expect ')' after expression.")
+  | Lexer.SUPER -> (
+      let line = current_line p in
+      let p = advance p in
+      let p =
+        match current_tok p with
+        | Lexer.DOT -> advance p
+        | _ -> parse_error p "Expect '.' after 'super'."
+      in
+      match current_tok p with
+      | Lexer.IDENTIFIER name ->
+          (advance p, Expr.Super (line, name, Expr.fresh_id ()))
+      | _ -> parse_error p "Expect superclass method name.")
   | _ -> parse_error p "Expect expression."
 
 (* Function call — left-associative suffix after primary *)

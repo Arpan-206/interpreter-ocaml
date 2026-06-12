@@ -1,6 +1,15 @@
-class Doughnut {}
+class Doughnut {
+  cook() {
+    print "Fry until golden brown.";
+  }
+}
 
-class BostonCream < Doughnut {}
+// Super can be used to call the overridden method
+// of the parent class
+class BostonCream < Doughnut {
+  cook() {
+    super.cook();
+  }
+}
 
-print Doughnut();
-print BostonCream();
+BostonCream().cook();
