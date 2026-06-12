@@ -75,7 +75,6 @@ let rec eval env = function
   | Expr.And (left, right) ->
       let v = eval env left in
       if not (is_truthy v) then v else eval env right
-  (* Function call — evaluates callee and args, checks arity, dispatches *)
   | Expr.Call (callee, args, line) ->
       let fn = eval env callee in
       let arg_vals = List.map (eval env) args in
@@ -83,6 +82,12 @@ let rec eval env = function
         match fn with
         | Value.VCallable c -> (c.arity, c.call)
         | Value.VFun f -> (f.arity, f.call)
+        | Value.VClass c ->
+            (* Instantiate: arity 0 for now (no init method yet) *)
+            ( 0,
+              fun _ ->
+                Value.VInstance
+                  { instance_class = c; fields = Hashtbl.create 4 } )
         | _ -> runtime_error_at line "Can only call functions and classes."
       in
       if List.length arg_vals <> arity then
