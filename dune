@@ -1,7 +1,16 @@
 (include_subdirs unqualified)
 
+(rule
+ (targets libruntime.a)
+ (deps (glob_files runtime/src/*.rs) runtime/Cargo.toml)
+ (action
+  (progn
+   (run cargo build --release --manifest-path runtime/Cargo.toml)
+   (run cp %{project_root}/runtime/target/release/libruntime.a libruntime.a))))
+
 (executable
  (name main)
- (modules main lexer expr stmt parser value env evaluator resolver)
+ (modules main lexer expr stmt parser value env evaluator resolver codegen serialise)
  (libraries unix)
+ (foreign_archives runtime)
  (ocamlopt_flags (:standard -O3 -unbox-closures)))

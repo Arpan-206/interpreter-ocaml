@@ -38,6 +38,11 @@ let () =
       let resolved = Resolver.resolve stmts in
       Evaluator.locals := resolved;
       Evaluator.exec_program stmts
+  | "jit" ->
+      let tokens = Lexer.tokenize file_contents in
+      let stmts = Parser.parse_program tokens in
+      let _locals = Resolver.resolve stmts in
+      Codegen.compile stmts "out.o"
   | _ ->
       Printf.eprintf "Unknown command: %s\n" command;
       exit 1

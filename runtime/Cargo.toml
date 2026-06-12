@@ -1,0 +1,13 @@
+[package]
+name = "runtime"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "runtime"
+crate-type = ["staticlib"]
+
+[dependencies]
+inkwell = { version = "0.5", features = ["llvm18-0"] }
+bincode = "1"
+serde = { version = "1", features = ["derive"] }
