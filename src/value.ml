@@ -20,7 +20,7 @@ and lox_class = {
 
 and lox_instance = {
   instance_class : lox_class;
-  fields : (string, t) Hashtbl.t;
+  mutable fields : (string * t) list;
 }
 
 let print = function

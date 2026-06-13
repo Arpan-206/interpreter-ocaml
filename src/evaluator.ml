@@ -53,10 +53,6 @@ let lookup_var env name line uid =
       | Error msg -> runtime_error_at line msg)
 
 let rec call_fun lf this_opt args =
-  if List.length args <> lf.lf_arity then
-    runtime_error
-      (Printf.sprintf "Expected %d arguments but got %d." lf.lf_arity
-         (List.length args));
   let fn_env = Env.make_child lf.lf_closure in
   (match this_opt with
   | Some inst -> Env.define fn_env "this" inst
@@ -78,27 +74,20 @@ let rec call_fun lf this_opt args =
   !result
 
 and make_fun_callable lf =
-  let id = register_fun lf in
   Value.VFun
     {
       Value.arity = lf.lf_arity;
       name = lf.lf_name;
-      call =
-        (fun args ->
-          let lf = Hashtbl.find fun_table id in
-          call_fun lf None args);
+      call = (fun args -> call_fun lf None args);
     }
 
 and make_bound_method lf inst =
-  let id = register_fun lf in
   Value.VFun
     {
       Value.arity = lf.lf_arity;
       name = lf.lf_name;
       call =
-        (fun args ->
-          let lf = Hashtbl.find fun_table id in
-          call_fun lf (Some (Value.VInstance inst)) args);
+        (fun args -> call_fun lf (Some (Value.VInstance inst)) args);
     }
 
 and eval env = function
@@ -139,7 +128,7 @@ and eval env = function
   | Expr.Get (obj, name, line) -> (
       match eval env obj with
       | Value.VInstance inst -> (
-          match Hashtbl.find_opt inst.fields name with
+          match List.assoc_opt name inst.fields with
           | Some v -> v
           | None -> (
               match find_method inst.instance_class name with
@@ -154,7 +143,12 @@ and eval env = function
       match eval env obj with
       | Value.VInstance inst ->
           let v = eval env value in
-          Hashtbl.replace inst.fields name v;
+          let rec update = function
+            | [] -> [ (name, v) ]
+            | (k, _) :: tl when k = name -> (name, v) :: tl
+            | kv :: tl -> kv :: update tl
+          in
+          inst.fields <- update inst.fields;
           v
       | _ -> runtime_error_at line "Only instances have fields.")
   | Expr.Unary (op, e) -> (
@@ -171,41 +165,78 @@ and eval env = function
   | Expr.And (left, right) ->
       let v = eval env left in
       if not (is_truthy v) then v else eval env right
+  | Expr.Call (Expr.Get (obj_expr, method_name, get_line), args, _line) -> (
+      match eval env obj_expr with
+      | Value.VInstance inst -> (
+          match List.assoc_opt method_name inst.fields with
+          | Some (Value.VCallable c) ->
+              let arg_vals = List.map (eval env) args in
+              if List.length arg_vals <> c.arity then
+                runtime_error_at get_line
+                  (Printf.sprintf "Expected %d arguments but got %d." c.arity
+                     (List.length arg_vals))
+              else c.call arg_vals
+          | Some (Value.VFun f) ->
+              let arg_vals = List.map (eval env) args in
+              if List.length arg_vals <> f.arity then
+                runtime_error_at get_line
+                  (Printf.sprintf "Expected %d arguments but got %d." f.arity
+                     (List.length arg_vals))
+              else f.call arg_vals
+          | Some _ ->
+              runtime_error_at get_line "Can only call functions and classes."
+          | None -> (
+              match find_method inst.instance_class method_name with
+              | Some method_id ->
+                  let lf = Hashtbl.find fun_table method_id in
+                  let arg_vals = List.map (eval env) args in
+                  if List.length arg_vals <> lf.lf_arity then
+                    runtime_error_at get_line
+                      (Printf.sprintf "Expected %d arguments but got %d."
+                         lf.lf_arity (List.length arg_vals))
+                  else
+                    call_fun lf (Some (Value.VInstance inst)) arg_vals
+              | None ->
+                  runtime_error_at get_line
+                    (Printf.sprintf "Undefined property '%s'." method_name)))
+      | other -> (
+          let fn =
+            match other with
+            | Value.VInstance _ -> assert false
+            | _ ->
+                runtime_error_at get_line "Only instances have properties."
+          in
+          ignore fn))
   | Expr.Call (callee, args, line) -> (
       let fn = eval env callee in
       let arg_vals = List.map (eval env) args in
+      let nargs = List.length arg_vals in
       match fn with
       | Value.VCallable c ->
-          if List.length arg_vals <> c.arity then
+          if nargs <> c.arity then
             runtime_error_at line
-              (Printf.sprintf "Expected %d arguments but got %d." c.arity
-                 (List.length arg_vals))
+              (Printf.sprintf "Expected %d arguments but got %d." c.arity nargs)
           else c.call arg_vals
       | Value.VFun f ->
-          if List.length arg_vals <> f.arity then
+          if nargs <> f.arity then
             runtime_error_at line
-              (Printf.sprintf "Expected %d arguments but got %d." f.arity
-                 (List.length arg_vals))
+              (Printf.sprintf "Expected %d arguments but got %d." f.arity nargs)
           else f.call arg_vals
       | Value.VClass c ->
+          let init = find_method c "init" in
           let init_arity =
-            match find_method c "init" with
-            | Some init_id ->
-                let lf = Hashtbl.find fun_table init_id in
-                lf.lf_arity
+            match init with
+            | Some id -> (Hashtbl.find fun_table id).lf_arity
             | None -> 0
           in
-          if List.length arg_vals <> init_arity then
+          if nargs <> init_arity then
             runtime_error_at line
-              (Printf.sprintf "Expected %d arguments but got %d." init_arity
-                 (List.length arg_vals))
+              (Printf.sprintf "Expected %d arguments but got %d." init_arity nargs)
           else
-            let inst =
-              Value.{ instance_class = c; fields = Hashtbl.create 4 }
-            in
-            (match find_method c "init" with
-            | Some init_id ->
-                let lf = Hashtbl.find fun_table init_id in
+            let inst = Value.{ instance_class = c; fields = [] } in
+            (match init with
+            | Some id ->
+                let lf = Hashtbl.find fun_table id in
                 ignore (call_fun lf (Some (Value.VInstance inst)) arg_vals)
             | None -> ());
             Value.VInstance inst
@@ -237,7 +268,7 @@ and eval env = function
             | Value.VNil, Value.VNil -> true
             | Value.VBool b1, Value.VBool b2 -> b1 = b2
             | Value.VNum f1, Value.VNum f2 -> Float.equal f1 f2
-            | Value.VString s1, Value.VString s2 -> s1 = s2
+            | Value.VString s1, Value.VString s2 -> String.equal s1 s2
             | _ -> false
           in
           match op with
